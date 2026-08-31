@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FocusGuard
+Comment=Block distracting apps on a schedule or on demand
+Exec=focusguard
+Icon=focusguard
+Terminal=false
+Categories=Utility;
+StartupNotify=true

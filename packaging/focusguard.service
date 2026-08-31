@@ -1,0 +1,22 @@
+[Unit]
+Description=FocusGuard app-blocker enforcement daemon
+After=graphical-session.target
+
+[Service]
+Type=simple
+# Bare command name: resolved via the system search path (/usr/bin etc.),
+# which is where the PKGBUILD/system install puts it. If you installed with
+# `pip install --user .` instead, replace this with the absolute path from
+# `which focusguardd` (typically %h/.local/bin/focusguardd).
+ExecStart=focusguardd
+Restart=on-failure
+RestartSec=2
+# Defense-in-depth beyond the daemon's own UID/protected-process checks.
+# (ProtectHome/ReadWritePaths sandboxing was tried but systemd requires
+# those paths to pre-exist before the unit ever runs, which is awkward for
+# a first-run config dir the daemon creates itself -- NoNewPrivileges alone
+# still meaningfully limits what the process could do if compromised.)
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
