@@ -1,22 +1,81 @@
+<div align="center">
+
+<img src="packaging/focusguard.svg" width="96" height="96" alt="FocusGuard icon">
+
 # FocusGuard
 
-A GUI app blocker / focus mode for Arch Linux + Hyprland. Pick installed
-applications in a GTK4/libadwaita window, schedule them (e.g. "block
-Discord, Steam, Spotify, and Vivaldi on weekdays 8am-3pm") or block them on
-demand for a set duration, and a small background daemon actually enforces
-it — killing matches on sight, including relaunch attempts — until you
-explicitly pause or stop it.
+**A real, enforced focus mode for Arch Linux + Hyprland.**
+
+Pick apps in a native GTK4 window. Schedule them, or block them on the spot.
+A background daemon actually stops them from running — no root required.
+
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+[![GTK4](https://img.shields.io/badge/GTK-4%20%2B%20libadwaita-7f5af0.svg)](#)
+[![Arch Linux](https://img.shields.io/badge/Arch%20Linux-Hyprland-1793d1.svg?logo=archlinux)](#)
+[![Tests](https://img.shields.io/badge/tests-69%20passing-2ec27e.svg)](tests)
+
+</div>
+
+<br>
+
+<div align="center">
+  <img src="docs/screenshot.png" width="620" alt="FocusGuard main window showing INACTIVE status, Pause/Stop/Resume controls, and a School profile row">
+</div>
+
+<br>
+
+FocusGuard exists because "focus mode" apps on Linux are almost always
+either a honor-system timer, or built for GNOME, or built for a session
+manager you're not running. This one does the un-glamorous thing that
+actually works: it watches your process table and kills what you told it
+to, on a schedule or on demand, until *you* explicitly say stop.
+
+## Contents
+
+- [Features](#features)
+- [Why not an existing tool?](#why-not-an-existing-tool)
+- [Architecture](#architecture)
+- [How enforcement actually works](#how-enforcement-actually-works)
+- [Known limitations](#known-limitations)
+- [Installing](#installing-arch-linux)
+- [Uninstalling](#uninstalling)
+- [Configuration](#configuration)
+- [CLI](#cli)
+- [Hyprland keybind](#hyprland-keybind-optional-not-installed-automatically)
+- [Notifications](#notifications)
+- [Logging](#logging)
+- [Security notes](#security-notes)
+- [Development / tests](#development--tests)
+
+## Features
+
+- 🖥️ **Native GTK4 + libadwaita GUI** — not a web page in a window
+- 🔍 **Real app discovery** via `Gio.DesktopAppInfo`, with icons, search,
+  Select All / Clear All
+- 📅 **Schedules** — days of week, start/end time, correctly handles
+  windows that cross midnight (bedtime profiles)
+- ⚡ **Manual sessions** — "start School now for 45 minutes" from the GUI
+  or CLI, no schedule required
+- 🧩 **Multiple profiles** — School, Study, Gaming, Bedtime, whatever —
+  each with its own apps, schedule, and duration; several can be active
+  at once
+- ⏸️ **Explicit, visible override** — Pause 5 min / Stop Mode / Resume,
+  never a silent bypass
+- 🔔 **Desktop notifications** on block start/end (optional, degrades
+  gracefully without `libnotify`)
+- ⌨️ **Hyprland keybind ready** via a scriptable CLI — you choose the key,
+  FocusGuard never touches your Hyprland config
+- 🔒 **No root, ever** — runs entirely as your user, with a locked-down
+  Unix socket and a fixed list of processes that can never be killed
 
 ## Why not an existing tool?
 
-- **Timekpr-nExT** manages *session* time budgets (login/logout enforcement)
-  — it has no concept of blocking individual apps while you're logged in.
-- **Malcontent** (GNOME parental controls) is built around Flatpak's
-  permission store, accountsservice, and polkit, aimed at a GNOME session —
-  a poor fit for a minimal Hyprland setup with no GNOME session services.
-- **cgroups alone** can throttle or freeze a process group but can't stop a
-  new process from being *exec'd* without root + a BPF LSM/seccomp filter,
-  which conflicts with "no root, no risky system changes."
+| Tool | Why it doesn't fit |
+|---|---|
+| **Timekpr-nExT** | Manages *session* time budgets (login/logout enforcement) — no concept of blocking individual apps while you're logged in. |
+| **Malcontent** (GNOME parental controls) | Built around Flatpak's permission store, accountsservice, and polkit, aimed at a GNOME session — a poor fit for a minimal Hyprland setup with no GNOME session services. |
+| **cgroups alone** | Can throttle or freeze a process group but can't stop a new process from being *exec'd* without root + a BPF LSM/seccomp filter — conflicts with "no root, no risky system changes." |
 
 So FocusGuard implements the same technique this class of tool has always
 used on Linux without root: a fast poll-and-kill loop over `/proc` for your
@@ -25,37 +84,46 @@ each app's `.desktop` file via `Gio.DesktopAppInfo`.
 
 ## Architecture
 
-```
-GTK4/libadwaita GUI  ──(Unix socket, JSON lines)──▶  focusguardd (daemon)
-        │                                                   │
-        ▼                                                   ▼
-~/.config/focusguard/config.json  ◀── shared file ──▶  scheduler + enforcer
-                                                             │
-                                                     /proc scan + SIGTERM/SIGKILL
+```mermaid
+flowchart LR
+    GUI["GTK4 / libadwaita GUI<br><code>focusguard</code>"]
+    CLI["CLI<br><code>focusguardctl</code>"]
+    SOCK{{"Unix socket<br>(JSON lines)"}}
+    DAEMON["Daemon<br><code>focusguardd</code><br>scheduler + enforcer"]
+    CFG[("~/.config/focusguard/<br>config.json")]
+    PROC["/proc scan<br>SIGTERM → SIGKILL"]
+
+    GUI -->|edits| CFG
+    GUI --> SOCK
+    CLI --> SOCK
+    SOCK --> DAEMON
+    DAEMON -->|reads| CFG
+    DAEMON --> PROC
 ```
 
-- The GUI (`focusguard`) never kills anything itself. It only edits
-  `config.json` and sends commands to the daemon over a Unix socket.
-- The daemon (`focusguardd`) is the only thing that touches processes. It
-  runs as a systemd `--user` service and works with no GUI open.
-- `focusguardctl` is a thin CLI over the same socket — bind it to a
+- The **GUI** never kills anything itself. It only edits `config.json` and
+  sends commands to the daemon over a Unix socket.
+- The **daemon** is the only thing that touches processes. It runs as a
+  `systemd --user` service and works with no GUI open.
+- **`focusguardctl`** is a thin CLI over the same socket — bind it to a
   Hyprland keybind, or script it.
 
 ## How enforcement actually works
 
-Every `poll_interval_seconds` (default 1s), the daemon:
+Every `poll_interval_seconds` (default **1s**), the daemon:
 
-1. Recomputes which apps should currently be blocked (union of every
+1. Recomputes which apps should currently be blocked — the union of every
    profile whose schedule is active or that was started manually, minus
-   anything paused).
+   anything paused.
 2. Scans `/proc` for your own processes and compares each one's `comm`,
    resolved executable path, and (for Flatpak) its app-id argv token
-   against the blocked apps' *exact* signatures — never a substring match.
+   against the blocked apps' *exact* signatures — **never** a substring
+   match.
 3. Sends `SIGTERM`; if the process is still alive after
-   `grace_period_seconds` (default 3s), escalates to `SIGKILL`.
+   `grace_period_seconds` (default **3s**), escalates to `SIGKILL`.
 
 Because this runs on every tick, a relaunch attempt is caught again on the
-next scan. A brief flash before the process dies is expected and is how
+next scan. A brief flash before the process dies is expected — this is how
 this entire class of Linux app-blocker works without root.
 
 A small fixed safety list (`focusguard.common.procs.PROTECTED_COMM`) is
@@ -65,19 +133,23 @@ processes can never be signaled.
 
 ### Known limitations
 
-- **Steam games**: selecting "Steam" blocks the Steam client itself, not
-  each game binary it launches (those are separate processes under a
+> [!NOTE]
+> These are inherent to root-free process blocking on Linux, not bugs.
+
+- **Steam games** — selecting "Steam" blocks the Steam client itself, not
+  each game binary it launches (those run as separate processes under a
   different name). Killing Steam does not reliably kill an already-running
   game.
-- **AppImages**: some mount themselves at a temp path that changes between
-  runs, which can defeat basename/path matching. Most that install to a
-  stable path work fine.
-- **Very fast relaunchers**: a script that respawns faster than the poll
+- **AppImages** — some mount themselves at a temp path that changes
+  between runs, which can defeat basename/path matching. Most that install
+  to a stable path work fine.
+- **Very fast relaunchers** — a script that respawns faster than the poll
   interval could theoretically win a race for a fraction of a second on
   each cycle. Lower `poll_interval_seconds` if this matters to you.
 - **Electron/Chromium apps** (Discord, Vivaldi, etc.) spawn several
   processes, but they all share the same real executable, so matching one
-  signature correctly catches all of them.
+  signature correctly catches all of them — this one isn't actually a
+  limitation, just worth knowing.
 
 ## Installing (Arch Linux)
 
@@ -88,11 +160,12 @@ sudo pacman -S python python-gobject gtk4 libadwaita
 ```
 
 `libnotify` (for `notify-send`) and a running `systemd --user` instance are
-recommended but optional — see "Notifications" below.
+recommended but optional — see [Notifications](#notifications).
 
 ### Option A: PKGBUILD (recommended)
 
 ```bash
+git clone https://github.com/rustyisacat/focusguard.git
 cd focusguard
 makepkg -si
 ```
@@ -103,16 +176,16 @@ user unit, the desktop entry, and the icon under `/usr`.
 ### Option B: pip (user install)
 
 ```bash
+git clone https://github.com/rustyisacat/focusguard.git
 cd focusguard
-python -m venv --system-site-packages ~/.local/share/focusguard-venv  # or skip and use pip --user
 pip install --user .
 ```
 
 If you use `pip install --user .`, edit
-`packaging/focusguard.service`'s `ExecStart=` to the absolute path printed
-by `which focusguardd` before installing the service (see below) — a bare
-command name in a systemd unit is only resolved from the system path
-(`/usr/bin` etc.), not `~/.local/bin`.
+[`packaging/focusguard.service`](packaging/focusguard.service)'s
+`ExecStart=` to the absolute path printed by `which focusguardd` before
+installing the service — a bare command name in a systemd unit is only
+resolved from the system path (`/usr/bin` etc.), not `~/.local/bin`.
 
 Then install the systemd unit and desktop file yourself:
 
@@ -149,15 +222,13 @@ focusguard
 systemctl --user disable --now focusguard.service
 ```
 
-**PKGBUILD install:** `sudo pacman -R focusguard`
-
-**pip install:** `pip uninstall focusguard`, then remove the files you
-copied manually (`~/.config/systemd/user/focusguard.service`,
-`~/.local/share/applications/focusguard.desktop`,
-`~/.local/share/icons/hicolor/scalable/apps/focusguard.svg`).
+| Install method | Remove the package |
+|---|---|
+| PKGBUILD | `sudo pacman -R focusguard` |
+| pip | `pip uninstall focusguard`, then delete the files you copied manually (`~/.config/systemd/user/focusguard.service`, `~/.local/share/applications/focusguard.desktop`, `~/.local/share/icons/hicolor/scalable/apps/focusguard.svg`) |
 
 **Either way**, your configuration and history are not touched
-automatically — remove them yourself if you want a clean slate:
+automatically — remove them yourself for a clean slate:
 
 ```bash
 rm -rf ~/.config/focusguard
@@ -187,18 +258,16 @@ edit it through the GUI, but the format is simple enough to hand-edit:
 }
 ```
 
-- `blocked_apps` are `.desktop` file IDs (as shown by the picker) — the
-  same ID `gio launch <id>` or `gtk-launch <id>` would use.
-- `schedule.days`: `0`=Monday ... `6`=Sunday.
-- A schedule that crosses midnight (e.g. `22:00` → `06:00` for a "Bedtime"
-  profile) works correctly.
-- `manual_duration_minutes` is how long a *manual* ("start now") activation
-  of that profile lasts; it doesn't affect the scheduled window.
+| Field | Meaning |
+|---|---|
+| `blocked_apps` | `.desktop` file IDs (as shown by the picker) — the same ID `gio launch <id>` or `gtk-launch <id>` would use |
+| `schedule.days` | `0`=Monday … `6`=Sunday |
+| `schedule.start` / `end` | `HH:MM`, 24h. A window that crosses midnight (e.g. `22:00` → `06:00` for a "Bedtime" profile) works correctly |
+| `manual_duration_minutes` | How long a *manual* ("start now") activation of that profile lasts; doesn't affect the scheduled window |
 
 If the file is malformed, the daemon logs an error and keeps running with
-whatever config it last loaded successfully — it will never overwrite or
-delete a bad file for you, so you can fix it and run
-`focusguardctl reload`.
+whatever config it last loaded successfully — it will **never** overwrite
+or delete a bad file for you. Fix it and run `focusguardctl reload`.
 
 ## CLI
 
@@ -214,26 +283,30 @@ focusguardctl reload              # force-reload config.json from disk
 
 Add `--json` *after* any command (e.g. `focusguardctl status --json`) for
 machine-readable output. Exit code is `0` on success and `1` on error
-either way.
+either way, so it's safe to use in shell conditionals without `--json` too.
 
 ## Hyprland keybind (optional, not installed automatically)
 
 FocusGuard never edits your Hyprland config. Add a line like this yourself,
-using whichever key combo is free on your setup (check your existing binds
-first — `SUPER+SHIFT+S` is a common screenshot bind and already likely
-taken):
+using whichever key combo is free on your setup — check your existing
+binds first, since e.g. `SUPER+SHIFT+S` is a common screenshot bind and
+likely already taken:
 
 ```
 bind = SUPER SHIFT, F, exec, focusguardctl toggle School
 ```
 
-(If your Hyprland config is Lua-based, e.g. `hl.bind("SUPER + SHIFT + F",
-hl.dsp.exec_cmd("focusguardctl toggle School"))`.)
+If your Hyprland config is Lua-based:
 
-### Optional Waybar/status indicator
+```lua
+hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("focusguardctl toggle School"),
+    { description = "FocusGuard: Toggle School mode" })
+```
+
+### Optional Waybar status indicator
 
 `focusguardctl status --json` prints machine-readable state, so a Waybar
-`custom` module can poll it, e.g.:
+`custom` module can poll it:
 
 ```jsonc
 "custom/focusguard": {
@@ -262,9 +335,9 @@ detail.
 ## Security notes
 
 - Runs entirely as your own user — no root, no setuid, no polkit rules.
-- The control socket lives under `$XDG_RUNTIME_DIR/focusguard/` (mode
-  `0700` directory, `0600` socket) and every connection's peer UID is
-  checked before any command is parsed.
+- The control socket lives under `$XDG_RUNTIME_DIR/focusguard/` (`0700`
+  directory, `0600` socket) and every connection's peer UID is checked
+  before any command is parsed.
 - The IPC protocol is a fixed whitelist of commands with validated
   arguments — there is no way to run an arbitrary command through it, and
   nothing in the codebase spawns a shell or interpolates config/IPC data
@@ -286,3 +359,11 @@ python -m venv .venv --system-site-packages   # need system PyGObject/GTK4
 
 `--system-site-packages` is required because PyGObject/GTK bindings are
 installed as system packages on Arch, not via pip.
+
+<br>
+
+<div align="center">
+
+Licensed under [AGPL-3.0-or-later](LICENSE).
+
+</div>
