@@ -9,9 +9,15 @@ description = "GUI app blocker / focus mode for Arch Linux + Hyprland"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.11"
-dependencies = [
-    "PyGObject>=3.50",
-]
+# PyGObject/GTK4/libadwaita are intentionally NOT listed here: they must
+# come from the system's own package manager (python-gobject/gtk4/
+# libadwaita on Arch, python3-gi/gir1.2-gtk-4.0/gir1.2-adw-1 on Debian/
+# Ubuntu) -- see README's Installing section. Declaring "PyGObject" as a
+# pip dependency makes pip try to build it (and pycairo) from source
+# whenever the system copy doesn't satisfy the version pin, which needs a
+# full C/meson/cairo-dev toolchain that isn't installed here and isn't
+# ours to require.
+dependencies = []
 
 [project.scripts]
 focusguardd = "focusguard.daemon.__main__:main"

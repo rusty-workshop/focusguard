@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -67,3 +68,49 @@ def test_json_flag_must_come_after_subcommand():
     with pytest.raises(SystemExit) as exc_info:
         cli.build_parser().parse_args(["--json", "status"])
     assert exc_info.value.code == 2
+
+
+def test_vigi_prints_art_and_a_reaction_line(capsys):
+    code = _main(["vigi"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Vigi" in out
+    from focusguard.common import mascot
+    assert any(line in out for line in mascot.CLICK_REACTIONS)
+
+
+def test_doctor_all_checks_pass_exits_zero(capsys):
+    with patch.object(cli, "_run_doctor_checks", return_value=[
+        ("config.json parses", True, ""),
+        ("notify-send available (optional)", False, "not found"),
+    ]):
+        code = _main(["doctor"])
+    assert code == 0  # optional check failing must not fail the overall result
+    out = capsys.readouterr().out
+    assert "✓ config.json parses" in out
+    assert "✗ notify-send available (optional)" in out
+    assert "All required checks passed." in out
+
+
+def test_doctor_required_check_failing_exits_nonzero(capsys):
+    with patch.object(cli, "_run_doctor_checks", return_value=[
+        ("daemon responds over IPC", False, "no socket"),
+    ]):
+        code = _main(["doctor"])
+    assert code == 1
+    assert "Some checks failed" in capsys.readouterr().out
+
+
+def test_doctor_json_output(capsys):
+    with patch.object(cli, "_run_doctor_checks", return_value=[("config.json parses", True, "")]):
+        code = _main(["doctor", "--json"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["checks"][0]["name"] == "config.json parses"
+
+
+def test_doctor_json_flag_after_subcommand_works():
+    parser = cli.build_parser()
+    args = parser.parse_args(["doctor", "--json"])
+    assert args.json is True
