@@ -89,19 +89,27 @@ class MainWindow(Adw.ApplicationWindow):
             self._vigi_picture.set_content_fit(Gtk.ContentFit.CONTAIN)
             self._vigi_picture.set_size_request(vigi_w, vigi_h)
             self._vigi_picture.set_can_shrink(True)
+            self._vigi_picture.set_halign(Gtk.Align.CENTER)
+            self._vigi_picture.set_valign(Gtk.Align.START)
+            self._vigi_picture.set_margin_top(_VIGI_FLOAT_PADDING)
 
-            # Wrapped in a Fixed so the idle float (below) can bob it up and
-            # down every frame without reflowing the rest of the header row.
-            self._vigi_fixed = Gtk.Fixed()
-            self._vigi_fixed.set_size_request(vigi_w, vigi_h + 2 * _VIGI_FLOAT_PADDING)
-            self._vigi_base_x = 0.0
-            self._vigi_base_y = float(_VIGI_FLOAT_PADDING)
-            self._vigi_fixed.put(self._vigi_picture, self._vigi_base_x, self._vigi_base_y)
-            self._vigi_fixed.add_tick_callback(self._on_vigi_tick)
-            header_row.append(self._vigi_fixed)
+            # A fixed-size, invisible spacer establishes the layout footprint;
+            # Vigi rides on top of it as an *overlay* child. GtkOverlay's own
+            # measurement only ever depends on this main child, so nudging
+            # the picture's margin every frame (the float) never changes the
+            # overlay's reported size -- unlike GtkFixed, whose size tracks
+            # each child's bounding box and previously made the whole header
+            # row (and the buttons below it) visibly bob along with Vigi.
+            spacer = Gtk.Box()
+            spacer.set_size_request(vigi_w, vigi_h + 2 * _VIGI_FLOAT_PADDING)
+            self._vigi_overlay = Gtk.Overlay()
+            self._vigi_overlay.set_child(spacer)
+            self._vigi_overlay.add_overlay(self._vigi_picture)
+            self._vigi_overlay.add_tick_callback(self._on_vigi_tick)
+            header_row.append(self._vigi_overlay)
         else:
             self._vigi_picture = None
-            self._vigi_fixed = None
+            self._vigi_overlay = None
 
         title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -182,11 +190,14 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.present()
 
     # ------------------------------------------------------------- mascot
-    def _on_vigi_tick(self, widget: Gtk.Fixed, frame_clock: Gdk.FrameClock) -> bool:
+    def _on_vigi_tick(self, widget: Gtk.Overlay, frame_clock: Gdk.FrameClock) -> bool:
         t_seconds = frame_clock.get_frame_time() / 1_000_000
         phase = (t_seconds % _VIGI_FLOAT_PERIOD_SECONDS) / _VIGI_FLOAT_PERIOD_SECONDS
         offset = _VIGI_FLOAT_AMPLITUDE_PX * math.sin(phase * 2 * math.pi)
-        widget.move(self._vigi_picture, self._vigi_base_x, self._vigi_base_y + offset)
+        # margin_top is integer-only in GTK; quantizing to whole pixels is
+        # still smooth at 60fps and keeps this an overlay-child-only change
+        # (see the comment where the overlay is built for why that matters).
+        self._vigi_picture.set_margin_top(int(round(_VIGI_FLOAT_PADDING + offset)))
         return GLib.SOURCE_CONTINUE
 
     # -------------------------------------------------------------- status
