@@ -7,6 +7,7 @@ sends control commands to focusguardd over the IPC socket, then polls
 from __future__ import annotations
 
 import logging
+import math
 import time
 from datetime import datetime
 
@@ -26,6 +27,14 @@ from .profile_editor import ProfileEditorWindow
 log = logging.getLogger(__name__)
 
 STATUS_POLL_INTERVAL_MS = 2000
+
+# Vigi's idle float: a slow vertical bob, synced to the display's own frame
+# clock (not a timeout) so it stays smooth and costs nothing when the
+# window isn't visible.
+_VIGI_FLOAT_AMPLITUDE_PX = 4.0
+_VIGI_FLOAT_PERIOD_SECONDS = 2.6
+_VIGI_SIZE = (56, 70)
+_VIGI_FLOAT_PADDING = 6  # extra vertical room in the Fixed so the bob never clips
 
 _VIGI_CSS = b"""
 .vigi-bubble {
@@ -75,13 +84,24 @@ class MainWindow(Adw.ApplicationWindow):
         header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         vigi_path = mascot.asset_path()
         if vigi_path is not None:
+            vigi_w, vigi_h = _VIGI_SIZE
             self._vigi_picture = Gtk.Picture.new_for_filename(str(vigi_path))
             self._vigi_picture.set_content_fit(Gtk.ContentFit.CONTAIN)
-            self._vigi_picture.set_size_request(56, 70)
+            self._vigi_picture.set_size_request(vigi_w, vigi_h)
             self._vigi_picture.set_can_shrink(True)
-            header_row.append(self._vigi_picture)
+
+            # Wrapped in a Fixed so the idle float (below) can bob it up and
+            # down every frame without reflowing the rest of the header row.
+            self._vigi_fixed = Gtk.Fixed()
+            self._vigi_fixed.set_size_request(vigi_w, vigi_h + 2 * _VIGI_FLOAT_PADDING)
+            self._vigi_base_x = 0.0
+            self._vigi_base_y = float(_VIGI_FLOAT_PADDING)
+            self._vigi_fixed.put(self._vigi_picture, self._vigi_base_x, self._vigi_base_y)
+            self._vigi_fixed.add_tick_callback(self._on_vigi_tick)
+            header_row.append(self._vigi_fixed)
         else:
             self._vigi_picture = None
+            self._vigi_fixed = None
 
         title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -160,6 +180,14 @@ class MainWindow(Adw.ApplicationWindow):
         )
         dialog.add_response("ok", "OK")
         dialog.present()
+
+    # ------------------------------------------------------------- mascot
+    def _on_vigi_tick(self, widget: Gtk.Fixed, frame_clock: Gdk.FrameClock) -> bool:
+        t_seconds = frame_clock.get_frame_time() / 1_000_000
+        phase = (t_seconds % _VIGI_FLOAT_PERIOD_SECONDS) / _VIGI_FLOAT_PERIOD_SECONDS
+        offset = _VIGI_FLOAT_AMPLITUDE_PX * math.sin(phase * 2 * math.pi)
+        widget.move(self._vigi_picture, self._vigi_base_x, self._vigi_base_y + offset)
+        return GLib.SOURCE_CONTINUE
 
     # -------------------------------------------------------------- status
     def _on_poll_tick(self) -> bool:
