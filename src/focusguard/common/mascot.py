@@ -95,6 +95,24 @@ def idle_chatter() -> str:
     return random.choice(IDLE_CHATTER)
 
 
+#: Shown when the user clicks/pets Vigi in the GUI.
+CLICK_REACTIONS = [
+    "Hey, that tickles!",
+    "You rang?",
+    "Yes? Still on duty.",
+    "Boop received.",
+    "That's my favorite spot.",
+    "Vigilance intensifies.",
+    "Wheee!",
+    "I felt that.",
+    "Reporting for duty, as requested by that click.",
+]
+
+
+def click_reaction() -> str:
+    return random.choice(CLICK_REACTIONS)
+
+
 def nudge_for(app_name: str) -> tuple[str, str]:
     """Return (title, body) for a just-blocked app notification."""
     template = random.choice(NUDGE_MESSAGES)

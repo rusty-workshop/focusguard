@@ -60,23 +60,35 @@ happens to have a small blinking shield friend doing the telling.
 <td valign="top">
 
 **Vigi** is FocusGuard's mascot — a small shield who blinks, glances
-around, and shows up whenever the daemon actually stops something you
-told it to. Not a nag, not a lecture — just a quick, friendly redirect.
+around, waves, twinkles, and shows up whenever the daemon actually stops
+something you told it to. Not a nag, not a lecture — just a quick,
+friendly redirect.
 
-Vigi appears in two places:
+**On this page**, Vigi is doing all of this at once, on loop: an idle
+bob-and-tilt, a squash-and-stretch shadow, a soft radar-style "on guard"
+pulse ring, a shared eye-glance with independently timed blinks (so
+there's an occasional solo wink), a periodic arm wave, and three ambient
+sparkles drifting in and out on their own schedule. All pure CSS/SMIL, no
+JavaScript — see [`docs/vigi.svg`](docs/vigi.svg).
 
-- **The main window**, in a little speech bubble that reflects the
-  current state (`I'm on watch — stay on track!` / `Taking a short
-  breather. Back soon.` / `All clear. Nothing to guard right now.`)
+Vigi also appears in two places in the app itself:
+
+- **The main window**, floating (bob + sway + tilt, driven by GTK's own
+  frame clock via `Gtk.Widget`'s CSS `transform`) next to a speech bubble
+  that reflects the current state (`I'm on watch — stay on track!` /
+  `Taking a short breather. Back soon.` / `All clear. Nothing to guard
+  right now.`) — plus idle chatter after the window's been open a while,
+  a little bounce whenever the block state changes, and a playful spin
+  (with a reaction line) if you click Vigi directly.
 - **Desktop notifications**, the moment a blocked app gets caught and
-  stopped — one of a handful of gentle nudges (`Not right now — Discord
+  stopped — one of two dozen gentle nudges (`Not right now — Discord
   can wait. You've got this.`), each shown with Vigi's own icon, throttled
   per app so retrying doesn't spam you.
 
-Vigi never gates enforcement — the kill always happens; the notification
-is just a courtesy on top of it. See
-[`common/mascot.py`](src/focusguard/common/mascot.py) for the message bank
-and [`docs/vigi.svg`](docs/vigi.svg) for the (CSS-animated) source art.
+Vigi never gates enforcement — the kill always happens; everything above
+is a courtesy layered on top. See
+[`common/mascot.py`](src/focusguard/common/mascot.py) for every message
+bank and [`docs/vigi.svg`](docs/vigi.svg) for the animated source art.
 
 </td>
 </tr>

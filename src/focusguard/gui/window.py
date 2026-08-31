@@ -36,13 +36,26 @@ _IDLE_CHATTER_FIRST_DELAY_SECONDS = 25
 _IDLE_CHATTER_MIN_INTERVAL_SECONDS = 20
 _IDLE_CHATTER_MAX_INTERVAL_SECONDS = 40
 
-# Vigi's idle float: a slow vertical bob, synced to the display's own frame
-# clock (not a timeout) so it stays smooth and costs nothing when the
-# window isn't visible.
-_VIGI_FLOAT_AMPLITUDE_PX = 4.0
-_VIGI_FLOAT_PERIOD_SECONDS = 2.6
+# Vigi's idle animation: a combined bob + sway + tilt, recomputed every
+# frame and applied as a single CSS `transform` on the picture widget
+# (GTK 4.12+ supports the same transform syntax as web CSS). Because
+# `transform` is paint-only and never affects layout, this can't reflow
+# siblings the way animating margin/size did before.
+_VIGI_BOB_AMPLITUDE_PX = 4.0
+_VIGI_BOB_PERIOD_SECONDS = 2.6
+_VIGI_SWAY_AMPLITUDE_PX = 2.0
+_VIGI_SWAY_PERIOD_SECONDS = 4.1
+_VIGI_TILT_AMPLITUDE_DEG = 2.5
+_VIGI_TILT_PERIOD_SECONDS = 3.3
 _VIGI_SIZE = (56, 70)
-_VIGI_FLOAT_PADDING = 6  # extra vertical room in the Fixed so the bob never clips
+_VIGI_FLOAT_PADDING = 6  # extra vertical room in the Overlay so the bob never clips
+
+# One-off "burst" animations layered on top of the idle motion: a little
+# bounce when the block state changes, a playful spin when Vigi is clicked.
+_VIGI_BURSTS = {
+    "pop": {"duration": 0.5},
+    "spin": {"duration": 0.7},
+}
 
 #: Vigi's own brand blue (matches docs/vigi.svg's gradient) -- used directly
 #: rather than a GTK theme-named color, since @accent_color/@accent_bg_color
@@ -58,6 +71,9 @@ _VIGI_CSS = (
      toward Vigi, who sits above-and-left of this box. */
   border-radius: 4px 14px 14px 14px;
   padding: 6px 10px;
+}
+#vigi-picture {
+  transform-origin: center;
 }
 """
     % (_VIGI_BLUE + _VIGI_BLUE)
@@ -111,6 +127,21 @@ class MainWindow(Adw.ApplicationWindow):
             self._vigi_picture.set_halign(Gtk.Align.CENTER)
             self._vigi_picture.set_valign(Gtk.Align.START)
             self._vigi_picture.set_margin_top(_VIGI_FLOAT_PADDING)
+            self._vigi_picture.set_name("vigi-picture")  # CSS #vigi-picture target
+            self._vigi_picture.set_cursor_from_name("pointer")
+            self._vigi_picture.set_tooltip_text("Hi! Give me a click.")
+
+            self._vigi_transform_provider = Gtk.CssProvider()
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                self._vigi_transform_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+            self._vigi_burst: dict | None = None
+
+            click = Gtk.GestureClick()
+            click.connect("released", self._on_vigi_clicked)
+            self._vigi_picture.add_controller(click)
 
             # A fixed-size, invisible spacer establishes the layout footprint;
             # Vigi rides on top of it as an *overlay* child. GtkOverlay's own
@@ -129,6 +160,8 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             self._vigi_picture = None
             self._vigi_overlay = None
+            self._vigi_burst = None
+            self._vigi_transform_provider = None
 
         title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
@@ -228,14 +261,44 @@ class MainWindow(Adw.ApplicationWindow):
         escaped = GLib.markup_escape_text(message)
         self._vigi_message_label.set_markup(f"<i>“{escaped}”</i>")
 
+    def _trigger_vigi_burst(self, kind: str) -> None:
+        if self._vigi_picture is not None:
+            self._vigi_burst = {"kind": kind, "start": time.monotonic()}
+
+    def _on_vigi_clicked(self, gesture: Gtk.GestureClick, n_press: int, x: float, y: float) -> None:
+        self._trigger_vigi_burst("spin")
+        self._set_vigi_says(mascot.click_reaction())
+
     def _on_vigi_tick(self, widget: Gtk.Overlay, frame_clock: Gdk.FrameClock) -> bool:
-        t_seconds = frame_clock.get_frame_time() / 1_000_000
-        phase = (t_seconds % _VIGI_FLOAT_PERIOD_SECONDS) / _VIGI_FLOAT_PERIOD_SECONDS
-        offset = _VIGI_FLOAT_AMPLITUDE_PX * math.sin(phase * 2 * math.pi)
-        # margin_top is integer-only in GTK; quantizing to whole pixels is
-        # still smooth at 60fps and keeps this an overlay-child-only change
-        # (see the comment where the overlay is built for why that matters).
-        self._vigi_picture.set_margin_top(int(round(_VIGI_FLOAT_PADDING + offset)))
+        t = time.monotonic()
+        bob = _VIGI_BOB_AMPLITUDE_PX * math.sin(2 * math.pi * t / _VIGI_BOB_PERIOD_SECONDS)
+        sway = _VIGI_SWAY_AMPLITUDE_PX * math.sin(2 * math.pi * t / _VIGI_SWAY_PERIOD_SECONDS + 1.3)
+        tilt = _VIGI_TILT_AMPLITUDE_DEG * math.sin(2 * math.pi * t / _VIGI_TILT_PERIOD_SECONDS + 0.7)
+
+        extra_y = extra_rot = 0.0
+        extra_scale = 1.0
+        if self._vigi_burst is not None:
+            elapsed = t - self._vigi_burst["start"]
+            spec = _VIGI_BURSTS[self._vigi_burst["kind"]]
+            if elapsed >= spec["duration"]:
+                self._vigi_burst = None
+            else:
+                p = elapsed / spec["duration"]
+                if self._vigi_burst["kind"] == "pop":
+                    # a single quick bounce in scale, peaking mid-way through
+                    extra_scale = 1 + 0.22 * math.sin(p * math.pi)
+                elif self._vigi_burst["kind"] == "spin":
+                    eased = 1 - (1 - p) ** 3  # ease-out cubic
+                    extra_rot = 360 * eased
+                    extra_y = -14 * math.sin(p * math.pi)  # a little hop mid-spin
+
+        css = (
+            "#vigi-picture { transform: "
+            f"translate({sway:.2f}px, {bob + extra_y:.2f}px) "
+            f"rotate({tilt + extra_rot:.2f}deg) "
+            f"scale({extra_scale:.3f}); }}"
+        ).encode("ascii")
+        self._vigi_transform_provider.load_from_data(css)
         return GLib.SOURCE_CONTINUE
 
     def _on_vigi_chatter(self) -> bool:
@@ -300,6 +363,8 @@ class MainWindow(Adw.ApplicationWindow):
         # is polled every couple seconds, and re-rolling on every poll would
         # make the bubble flicker between random variants distractingly.
         if state_key != self._last_vigi_state_key:
+            if self._last_vigi_state_key is not None:  # skip the bounce on first load
+                self._trigger_vigi_burst("pop")
             self._last_vigi_state_key = state_key
             self._set_vigi_says(mascot.status_message(state_key))
 

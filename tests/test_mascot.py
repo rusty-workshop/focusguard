@@ -47,6 +47,16 @@ def test_idle_chatter_has_no_app_placeholder():
         assert "{app}" not in line
 
 
+def test_click_reactions_have_real_variety():
+    assert len(mascot.CLICK_REACTIONS) >= 5
+    assert len(set(mascot.CLICK_REACTIONS)) == len(mascot.CLICK_REACTIONS)
+
+
+def test_click_reaction_returns_a_line_from_the_bank():
+    for _ in range(20):
+        assert mascot.click_reaction() in mascot.CLICK_REACTIONS
+
+
 def test_asset_path_resolves_to_an_existing_file():
     path = mascot.asset_path()
     assert path is not None
