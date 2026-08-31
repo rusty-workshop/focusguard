@@ -69,6 +69,32 @@ STATUS_MESSAGES = {
 }
 
 
+#: Idle small talk, shown in the GUI every so often instead of the plain
+#: status line, purely for personality -- none of this carries information
+#: the title/detail labels don't already show, so it's safe to be silly.
+IDLE_CHATTER = [
+    "Did you know I blink? Try to catch it.",
+    "Just floating here, thinking shield thoughts.",
+    "Focus is a marathon, not a sprint.",
+    "I'm not just a pretty shield, you know.",
+    "Still here. Still watching. Still floating.",
+    "Small steps count. Keep going.",
+    "I'd high-five you if I had hands that reached that far.",
+    "Somewhere, an app is very disappointed in me.",
+    "Guarding is my whole personality.",
+    "You're doing better than you think.",
+    "I practiced my glare for this.",
+    "No apps were harmed. Several were inconvenienced.",
+    "Ten out of ten focus. Would guard again.",
+    "I float because standing still is boring.",
+    "This is me, being vigilant. It looks a lot like blinking.",
+]
+
+
+def idle_chatter() -> str:
+    return random.choice(IDLE_CHATTER)
+
+
 def nudge_for(app_name: str) -> tuple[str, str]:
     """Return (title, body) for a just-blocked app notification."""
     template = random.choice(NUDGE_MESSAGES)

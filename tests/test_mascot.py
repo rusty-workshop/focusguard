@@ -31,6 +31,22 @@ def test_status_message_bank_has_multiple_options_per_state():
         assert len(options) >= 2, f"{state} should offer some variety"
 
 
+def test_idle_chatter_has_real_variety():
+    assert len(mascot.IDLE_CHATTER) >= 10
+    assert len(set(mascot.IDLE_CHATTER)) == len(mascot.IDLE_CHATTER)  # no accidental dupes
+
+
+def test_idle_chatter_returns_a_line_from_the_bank():
+    for _ in range(20):
+        assert mascot.idle_chatter() in mascot.IDLE_CHATTER
+
+
+def test_idle_chatter_has_no_app_placeholder():
+    # unlike nudges, chatter is never formatted with an app name
+    for line in mascot.IDLE_CHATTER:
+        assert "{app}" not in line
+
+
 def test_asset_path_resolves_to_an_existing_file():
     path = mascot.asset_path()
     assert path is not None

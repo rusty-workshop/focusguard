@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import random
 import time
 from datetime import datetime
 
@@ -27,6 +28,13 @@ from .profile_editor import ProfileEditorWindow
 log = logging.getLogger(__name__)
 
 STATUS_POLL_INTERVAL_MS = 2000
+
+# How long the window has to sit open with no state change before Vigi
+# starts making idle small talk in the speech bubble, and how often after
+# that. Randomized a bit per-cycle so it doesn't feel like a metronome.
+_IDLE_CHATTER_FIRST_DELAY_SECONDS = 25
+_IDLE_CHATTER_MIN_INTERVAL_SECONDS = 20
+_IDLE_CHATTER_MAX_INTERVAL_SECONDS = 40
 
 # Vigi's idle float: a slow vertical bob, synced to the display's own frame
 # clock (not a timeout) so it stays smooth and costs nothing when the
@@ -167,6 +175,8 @@ class MainWindow(Adw.ApplicationWindow):
         GLib.timeout_add(STATUS_POLL_INTERVAL_MS, self._on_poll_tick)
         self._rebuild_profile_rows()
 
+        GLib.timeout_add_seconds(_IDLE_CHATTER_FIRST_DELAY_SECONDS, self._on_vigi_chatter)
+
     # ------------------------------------------------------------- config
     def _load_config(self) -> Config:
         try:
@@ -200,6 +210,18 @@ class MainWindow(Adw.ApplicationWindow):
         # (see the comment where the overlay is built for why that matters).
         self._vigi_picture.set_margin_top(int(round(_VIGI_FLOAT_PADDING + offset)))
         return GLib.SOURCE_CONTINUE
+
+    def _on_vigi_chatter(self) -> bool:
+        """Swap the speech bubble to idle small talk if the window's been
+        sitting open a while. Doesn't touch title/detail (the actual status
+        info), so it's safe even if it lands mid-something-important; the
+        next real state change overwrites it immediately anyway."""
+        if not self.is_visible():
+            return GLib.SOURCE_REMOVE
+        self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.idle_chatter()}")
+        next_delay = random.randint(_IDLE_CHATTER_MIN_INTERVAL_SECONDS, _IDLE_CHATTER_MAX_INTERVAL_SECONDS)
+        GLib.timeout_add_seconds(next_delay, self._on_vigi_chatter)
+        return GLib.SOURCE_REMOVE  # this firing was one-shot; the line above continues the cycle
 
     # -------------------------------------------------------------- status
     def _on_poll_tick(self) -> bool:
