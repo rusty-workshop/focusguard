@@ -325,11 +325,35 @@ focusguardctl pause <minutes>     # suspend all enforcement for N minutes, then 
 focusguardctl resume              # cancel an active pause immediately
 focusguardctl toggle <profile>    # start if inactive, stop if active — ideal for a keybind
 focusguardctl reload              # force-reload config.json from disk
+focusguardctl doctor              # check daemon/socket/systemd/config health, exits 1 if anything's wrong
+focusguardctl vigi                # say hi to Vigi
 ```
 
 Add `--json` *after* any command (e.g. `focusguardctl status --json`) for
 machine-readable output. Exit code is `0` on success and `1` on error
 either way, so it's safe to use in shell conditionals without `--json` too.
+
+### Shell completions
+
+Bash, zsh, and fish completions for `focusguardctl` live in
+[`packaging/completions/`](packaging/completions/) — subcommands and
+`--json`, plus your actual configured profile names (via `jq`, if
+installed) for `start`/`stop`/`toggle`. The PKGBUILD installs all three
+automatically. For a manual/pip install:
+
+```bash
+# bash (this session only)
+source packaging/completions/focusguardctl.bash
+# fish (persists — fish auto-loads anything in this directory)
+cp packaging/completions/focusguardctl.fish ~/.config/fish/completions/
+# zsh (add packaging/completions to $fpath before compinit, or copy directly)
+cp packaging/completions/_focusguardctl ~/.zsh/completions/  # then `fpath+=~/.zsh/completions` in .zshrc
+```
+
+Verified live against real profiles for bash and fish; the zsh script
+follows the same structure but wasn't runnable in the environment this
+was built in (no zsh installed) — flagging that rather than claiming it
+was tested.
 
 ## Hyprland keybind (optional, not installed automatically)
 

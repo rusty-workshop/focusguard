@@ -8,7 +8,8 @@ url="https://github.com/rustyisacat/focusguard"
 license=('AGPL3')
 depends=('python' 'python-gobject' 'gtk4' 'libadwaita')
 optdepends=('libnotify: desktop notifications when a block starts/ends'
-            'systemd: user service autostart')
+            'systemd: user service autostart'
+            'jq: profile-name completion for focusguardctl in bash/zsh/fish')
 makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
 source=()
 sha256sums=()
@@ -31,4 +32,11 @@ package() {
   install -Dm644 packaging/focusguard.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/focusguard.svg"
   install -Dm644 README.md "$pkgdir/usr/share/doc/focusguard/README.md"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/focusguard/LICENSE"
+
+  install -Dm644 packaging/completions/focusguardctl.bash \
+    "$pkgdir/usr/share/bash-completion/completions/focusguardctl"
+  install -Dm644 packaging/completions/_focusguardctl \
+    "$pkgdir/usr/share/zsh/site-functions/_focusguardctl"
+  install -Dm644 packaging/completions/focusguardctl.fish \
+    "$pkgdir/usr/share/fish/vendor_completions.d/focusguardctl.fish"
 }
