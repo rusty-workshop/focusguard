@@ -27,15 +27,45 @@ NUDGE_MESSAGES = [
     "Gently redirecting you away from {app}.",
     "{app} will still be there later. Keep going!",
     "I've got {app} covered. You focus on the real thing.",
+    "Nope — {app} is off-limits for now.",
+    "Future you says thanks for skipping {app}.",
+    "{app} again? I see you. Let's refocus.",
+    "Blocked {app} so you don't have to rely on willpower alone.",
+    "One step closer, as long as you stay away from {app}.",
+    "{app} can wait a little longer. You're doing great.",
+    "Caught you! {app} is paused until this session ends.",
+    "Sneaky. But {app} stays closed for now.",
+    "That's a no from me — {app} is on the blocklist right now.",
+    "{app} isn't going anywhere. Neither should your focus.",
+    "Not today, {app}. Back to what matters.",
+    "I'm keeping {app} out of reach for a bit longer.",
+    "Whoa there — {app} is a distraction for later, not now.",
+    "Held the line against {app}. Proud of you.",
+    "{app} will keep. Your focus won't, if you let it slip.",
+    "Quietly closing the door on {app} for you.",
+    "Still watching — {app} doesn't get past me right now.",
 ]
 
 #: Shown once per app per cooldown window, not on every poll tick.
 NUDGE_COOLDOWN_SECONDS = 20.0
 
 STATUS_MESSAGES = {
-    "ACTIVE": "I'm on watch — stay on track!",
-    "PAUSED": "Taking a short breather. Back soon.",
-    "INACTIVE": "All clear. Nothing to guard right now.",
+    "ACTIVE": [
+        "I'm on watch — stay on track!",
+        "Standing guard. You focus, I'll handle the rest.",
+        "On duty. Let's get this done.",
+        "Eyes open, distractions out.",
+    ],
+    "PAUSED": [
+        "Taking a short breather. Back soon.",
+        "Stretching my legs for a bit.",
+        "On a quick break — I'll be back on watch shortly.",
+    ],
+    "INACTIVE": [
+        "All clear. Nothing to guard right now.",
+        "Off duty. Start a profile whenever you're ready.",
+        "Standing by — nothing blocked at the moment.",
+    ],
 }
 
 
@@ -46,7 +76,10 @@ def nudge_for(app_name: str) -> tuple[str, str]:
 
 
 def status_message(state: str) -> str:
-    return STATUS_MESSAGES.get(state, STATUS_MESSAGES["INACTIVE"])
+    """A random line for the given state. Callers that poll frequently (the
+    GUI status card) should cache the result and only re-roll when the
+    state itself changes, or this will flicker distractingly."""
+    return random.choice(STATUS_MESSAGES.get(state, STATUS_MESSAGES["INACTIVE"]))
 
 
 _asset_path_cache: Optional[Path] = None

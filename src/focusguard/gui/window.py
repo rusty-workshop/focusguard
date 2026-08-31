@@ -162,6 +162,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_content(toolbar_view)
 
         self._last_status: dict | None = None
+        self._last_vigi_state_key: str | None = None
         self.refresh_status()
         GLib.timeout_add(STATUS_POLL_INTERVAL_MS, self._on_poll_tick)
         self._rebuild_profile_rows()
@@ -246,7 +247,12 @@ class MainWindow(Adw.ApplicationWindow):
             self._status_detail.set_text("Nothing is currently blocked")
             state_key = "INACTIVE"
 
-        self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.status_message(state_key)}")
+        # Only re-roll Vigi's line when the state actually changes -- this
+        # is polled every couple seconds, and re-rolling on every poll would
+        # make the bubble flicker between random variants distractingly.
+        if state_key != self._last_vigi_state_key:
+            self._last_vigi_state_key = state_key
+            self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.status_message(state_key)}")
 
         self._pause_btn.set_sensitive(not paused)
         self._resume_btn.set_sensitive(paused)
