@@ -31,42 +31,53 @@ Item {
     implicitWidth: row.implicitWidth + 16
     implicitHeight: 24
 
-    // A tiny pixel-art Vigi: a 9x10 grid of "on"/"eye"/"off" cells, built
-    // entirely from Rectangles (no image asset needed). Blinks briefly
+    // A tiny pixel-art Vigi: an 11x12 grid of "body"/"eye"/"off" cells,
+    // built entirely from Rectangles (no image asset needed) -- a tapered
+    // shield silhouette with two small arm bumps (rows 4-5) and two navy
+    // eye pixels, separated by a body-colored pixel rather than a
+    // transparent gap (a transparent gap there previously showed the bar's
+    // own background through and misread as a third dot). Blinks briefly
     // every few seconds and bobs gently, independent of FocusGuard's
     // actual state -- it's mascot flair, not a second status indicator
     // (the dot below already covers that).
     component VigiPixel: Item {
         id: vigi
         property int cell: 2
+        // Arms (rows 4-5) are separated from the body by a 1px transparent
+        // gap on purpose -- without it they just read as a wider row of
+        // the body rather than distinct little stubs.
         readonly property var frameOpen: [
-            "..XXXXX..",
-            ".XXXXXXX.",
-            "XXXXXXXXX",
-            "XX#X.X#XX",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            ".XXXXXXX.",
-            "..XXXXX..",
-            "...XXX...",
+            "....XXXXX....",
+            "...XXXXXXX...",
+            "..XXXXXXXXX..",
+            "..XXXXXXXXX..",
+            "X.XXOXXXOXX.X",
+            "X.XXXXXXXXX.X",
+            "..XXXXXXXXX..",
+            "..XXXXXXXXX..",
+            "...XXXXXXX...",
+            "....XXXXX....",
+            ".....XXX.....",
+            "......X......",
         ]
         readonly property var frameBlink: [
-            "..XXXXX..",
-            ".XXXXXXX.",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            "XXXXXXXXX",
-            ".XXXXXXX.",
-            "..XXXXX..",
-            "...XXX...",
+            "....XXXXX....",
+            "...XXXXXXX...",
+            "..XXXXXXXXX..",
+            "..XXXXXXXXX..",
+            "X.XXXXXXXXX.X",
+            "X.XXXXXXXXX.X",
+            "..XXXXXXXXX..",
+            "..XXXXXXXXX..",
+            "...XXXXXXX...",
+            "....XXXXX....",
+            ".....XXX.....",
+            "......X......",
         ]
         property bool blinking: false
         readonly property var frame: blinking ? frameBlink : frameOpen
-        readonly property int cols: 9
-        readonly property int rows: 10
+        readonly property int cols: 13
+        readonly property int rows: 12
 
         implicitWidth: cols * cell
         implicitHeight: rows * cell
@@ -105,7 +116,7 @@ Item {
                 y: row * vigi.cell + vigi.bob
                 width: vigi.cell
                 height: vigi.cell
-                color: ch === "#" ? "#22337a" : "#6b8afd"
+                color: ch === "O" ? "#22337a" : "#6b8afd"
             }
         }
     }
