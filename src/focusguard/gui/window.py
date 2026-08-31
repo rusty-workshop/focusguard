@@ -14,8 +14,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+gi.require_version("Gdk", "4.0")
+from gi.repository import Adw, Gdk, GLib, Gtk  # noqa: E402
 
+from ..common import mascot
 from ..common.appinfo import lookup_app
 from ..common.config import Config, ConfigError, Profile, load_config, save_config
 from . import client
@@ -25,11 +27,33 @@ log = logging.getLogger(__name__)
 
 STATUS_POLL_INTERVAL_MS = 2000
 
+_VIGI_CSS = b"""
+.vigi-bubble {
+  background-color: alpha(currentColor, 0.06);
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+"""
+_vigi_css_installed = False
+
+
+def _ensure_vigi_css() -> None:
+    global _vigi_css_installed
+    if _vigi_css_installed:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_VIGI_CSS)
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
+    _vigi_css_installed = True
+
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
         super().__init__(application=app, default_width=460, default_height=640, title="FocusGuard")
 
+        _ensure_vigi_css()
         self._cfg: Config = self._load_config()
 
         header = Adw.HeaderBar()
@@ -48,17 +72,37 @@ class MainWindow(Adw.ApplicationWindow):
         status_box.set_margin_top(4)
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
 
+        header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        vigi_path = mascot.asset_path()
+        if vigi_path is not None:
+            self._vigi_picture = Gtk.Picture.new_for_filename(str(vigi_path))
+            self._vigi_picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+            self._vigi_picture.set_size_request(56, 70)
+            self._vigi_picture.set_can_shrink(True)
+            header_row.append(self._vigi_picture)
+        else:
+            self._vigi_picture = None
+
+        title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         self._status_dot = Gtk.Label(label="●")
         self._status_title = Gtk.Label(label="Loading...", xalign=0)
         self._status_title.add_css_class("title-2")
         title_row.append(self._status_dot)
         title_row.append(self._status_title)
-        inner.append(title_row)
+        title_col.append(title_row)
 
         self._status_detail = Gtk.Label(label="", xalign=0, wrap=True)
         self._status_detail.add_css_class("dim-label")
-        inner.append(self._status_detail)
+        title_col.append(self._status_detail)
+
+        self._vigi_bubble = Gtk.Label(label="", xalign=0, wrap=True)
+        self._vigi_bubble.add_css_class("caption")
+        self._vigi_bubble.add_css_class("vigi-bubble")
+        title_col.append(self._vigi_bubble)
+
+        header_row.append(title_col)
+        inner.append(header_row)
 
         action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8, margin_top=8)
         self._pause_btn = Gtk.Button(label="Pause 5 min")
@@ -130,6 +174,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._status_title.set_text("Daemon unreachable")
             self._status_detail.set_text(error or "unknown error")
             self._status_dot.set_markup('<span color="#888888">●</span>')
+            self._vigi_bubble.set_text(f"{mascot.NAME}: I can't reach the daemon — is it running?")
             self._pause_btn.set_sensitive(False)
             self._stop_btn.set_sensitive(False)
             self._resume_btn.set_sensitive(False)
@@ -145,6 +190,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._status_dot.set_markup('<span color="#f5a623">●</span>')
             self._status_title.set_text("PAUSED")
             self._status_detail.set_text(f"Enforcement paused until {when}")
+            state_key = "PAUSED"
         elif blocked:
             self._status_dot.set_markup('<span color="#e01b24">●</span>')
             self._status_title.set_text(f"ACTIVE — blocking {len(blocked)} app(s)")
@@ -154,10 +200,14 @@ class MainWindow(Adw.ApplicationWindow):
                 names.append(entry.name if entry else app_id)
             more = f" +{len(blocked) - 6} more" if len(blocked) > 6 else ""
             self._status_detail.set_text(", ".join(names) + more)
+            state_key = "ACTIVE"
         else:
             self._status_dot.set_markup('<span color="#2ec27e">●</span>')
             self._status_title.set_text("INACTIVE")
             self._status_detail.set_text("Nothing is currently blocked")
+            state_key = "INACTIVE"
+
+        self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.status_message(state_key)}")
 
         self._pause_btn.set_sensitive(not paused)
         self._resume_btn.set_sensitive(paused)

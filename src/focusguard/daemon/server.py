@@ -19,7 +19,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from ..common import paths
+from ..common import mascot, paths
+from ..common.appinfo import lookup_app
 from ..common.config import Config, ConfigError, load_config
 from . import scheduler
 from .enforcer import Enforcer
@@ -51,6 +52,7 @@ class Daemon:
         self._my_uid = os.getuid()
         self._prev_blocked_ids: set[str] = set()
         self._server: Optional[asyncio.base_events.Server] = None
+        self._last_nudge: dict[str, float] = {}
 
     # ---------------------------------------------------------------- config
     def _load_config_safely(self) -> Config:
@@ -113,14 +115,34 @@ class Daemon:
                 notify("FocusGuard: block ended", f"{len(ended)} app(s) no longer blocked")
             self._prev_blocked_ids = newly_blocked
 
-        self.enforcer.tick(status.blocked_desktop_ids)
+        events = self.enforcer.tick(status.blocked_desktop_ids)
+        self._handle_enforcement_events(events, now)
 
     def _enforce_now(self) -> None:
         """Run an immediate out-of-band enforcement pass (used right after a
         command mutates state) rather than waiting for the next poll tick."""
         status = scheduler.compute_status(self.cfg, self.state)
-        self.enforcer.tick(status.blocked_desktop_ids)
+        events = self.enforcer.tick(status.blocked_desktop_ids)
+        self._handle_enforcement_events(events, time.time())
         self._prev_blocked_ids = set(status.blocked_desktop_ids)
+
+    def _handle_enforcement_events(self, events, now: float) -> None:
+        """Vigi's nudge: a friendly notification the moment a blocked app is
+        actually stopped, throttled per-app so a relaunch loop doesn't spam
+        notifications -- enforcement itself is never throttled, only this."""
+        if not self.cfg.settings.notifications_enabled:
+            return
+        for action, _pid, app_id in events:
+            if action != "sigterm":
+                continue
+            last = self._last_nudge.get(app_id, 0.0)
+            if now - last < mascot.NUDGE_COOLDOWN_SECONDS:
+                continue
+            self._last_nudge[app_id] = now
+            entry = lookup_app(app_id)
+            app_name = entry.name if entry else app_id
+            title, body = mascot.nudge_for(app_name)
+            notify(title, body, icon=mascot.asset_path())
 
     # ------------------------------------------------------------------ IPC
     async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

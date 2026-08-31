@@ -23,5 +23,8 @@ focusguard = "focusguard.gui.__main__:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"focusguard.gui" = ["assets/*.svg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

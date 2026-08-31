@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="packaging/focusguard.svg" width="96" height="96" alt="FocusGuard icon">
+<img src="docs/vigi.svg" width="110" alt="Vigi, the FocusGuard mascot — a small blinking shield">
 
 # FocusGuard
 
-**A real, enforced focus mode for Arch Linux + Hyprland.**
+**A real, enforced focus mode for Arch Linux + Hyprland — guarded by Vigi.**
 
 Pick apps in a native GTK4 window. Schedule them, or block them on the spot.
 A background daemon actually stops them from running — no root required.
@@ -13,14 +13,14 @@ A background daemon actually stops them from running — no root required.
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![GTK4](https://img.shields.io/badge/GTK-4%20%2B%20libadwaita-7f5af0.svg)](#)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-Hyprland-1793d1.svg?logo=archlinux)](#)
-[![Tests](https://img.shields.io/badge/tests-69%20passing-2ec27e.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-80%20passing-2ec27e.svg)](tests)
 
 </div>
 
 <br>
 
 <div align="center">
-  <img src="docs/screenshot.png" width="620" alt="FocusGuard main window showing INACTIVE status, Pause/Stop/Resume controls, and a School profile row">
+  <img src="docs/screenshot.png" width="620" alt="FocusGuard main window showing Vigi the mascot, INACTIVE status, Pause/Stop/Resume controls, and a profiles list">
 </div>
 
 <br>
@@ -29,10 +29,12 @@ FocusGuard exists because "focus mode" apps on Linux are almost always
 either a honor-system timer, or built for GNOME, or built for a session
 manager you're not running. This one does the un-glamorous thing that
 actually works: it watches your process table and kills what you told it
-to, on a schedule or on demand, until *you* explicitly say stop.
+to, on a schedule or on demand, until *you* explicitly say stop. It just
+happens to have a small blinking shield friend doing the telling.
 
 ## Contents
 
+- [Meet Vigi](#meet-vigi)
 - [Features](#features)
 - [Why not an existing tool?](#why-not-an-existing-tool)
 - [Architecture](#architecture)
@@ -47,6 +49,38 @@ to, on a schedule or on demand, until *you* explicitly say stop.
 - [Logging](#logging)
 - [Security notes](#security-notes)
 - [Development / tests](#development--tests)
+
+## Meet Vigi
+
+<table>
+<tr>
+<td width="140" align="center" valign="top">
+  <img src="docs/vigi.svg" width="120" alt="Vigi">
+</td>
+<td valign="top">
+
+**Vigi** is FocusGuard's mascot — a small shield who blinks, glances
+around, and shows up whenever the daemon actually stops something you
+told it to. Not a nag, not a lecture — just a quick, friendly redirect.
+
+Vigi appears in two places:
+
+- **The main window**, in a little speech bubble that reflects the
+  current state (`I'm on watch — stay on track!` / `Taking a short
+  breather. Back soon.` / `All clear. Nothing to guard right now.`)
+- **Desktop notifications**, the moment a blocked app gets caught and
+  stopped — one of a handful of gentle nudges (`Not right now — Discord
+  can wait. You've got this.`), each shown with Vigi's own icon, throttled
+  per app so retrying doesn't spam you.
+
+Vigi never gates enforcement — the kill always happens; the notification
+is just a courtesy on top of it. See
+[`common/mascot.py`](src/focusguard/common/mascot.py) for the message bank
+and [`docs/vigi.svg`](docs/vigi.svg) for the (CSS-animated) source art.
+
+</td>
+</tr>
+</table>
 
 ## Features
 

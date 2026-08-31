@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+from pathlib import Path
+from typing import Optional
 
 log = logging.getLogger(__name__)
 
@@ -20,12 +22,16 @@ def _notify_send_available() -> bool:
     return _available
 
 
-def notify(summary: str, body: str = "", urgency: str = "normal") -> None:
+def notify(summary: str, body: str = "", urgency: str = "normal", icon: Optional[Path] = None) -> None:
     if not _notify_send_available():
         return
+    cmd = ["notify-send", "-a", "FocusGuard", "-u", urgency]
+    if icon is not None:
+        cmd += ["-i", str(icon)]
+    cmd += ["--", summary, body]
     try:
         subprocess.run(
-            ["notify-send", "-a", "FocusGuard", "-u", urgency, "--", summary, body],
+            cmd,
             timeout=2,
             check=False,
             stdout=subprocess.DEVNULL,
