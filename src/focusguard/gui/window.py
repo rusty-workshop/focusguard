@@ -44,13 +44,24 @@ _VIGI_FLOAT_PERIOD_SECONDS = 2.6
 _VIGI_SIZE = (56, 70)
 _VIGI_FLOAT_PADDING = 6  # extra vertical room in the Fixed so the bob never clips
 
-_VIGI_CSS = b"""
+#: Vigi's own brand blue (matches docs/vigi.svg's gradient) -- used directly
+#: rather than a GTK theme-named color, since @accent_color/@accent_bg_color
+#: turned out not to reliably tint GtkLabel text/background at this specificity.
+_VIGI_BLUE = (107, 138, 253)
+
+_VIGI_CSS = (
+    """
 .vigi-bubble {
-  background-color: alpha(currentColor, 0.06);
-  border-radius: 12px;
+  background-color: rgba(%d, %d, %d, 0.16);
+  border: 1px solid rgba(%d, %d, %d, 0.55);
+  /* Sharper top-left corner reads as a speech-bubble notch pointing up
+     toward Vigi, who sits above-and-left of this box. */
+  border-radius: 4px 14px 14px 14px;
   padding: 6px 10px;
 }
 """
+    % (_VIGI_BLUE + _VIGI_BLUE)
+).encode("ascii")
 _vigi_css_installed = False
 
 
@@ -132,9 +143,21 @@ class MainWindow(Adw.ApplicationWindow):
         self._status_detail.add_css_class("dim-label")
         title_col.append(self._status_detail)
 
-        self._vigi_bubble = Gtk.Label(label="", xalign=0, wrap=True)
-        self._vigi_bubble.add_css_class("caption")
+        # Vigi's speech bubble: a small bold name-tag + an italic, quoted
+        # line, inside a notched, tinted box -- reads unambiguously as
+        # "character speaking" rather than a second status label.
+        self._vigi_bubble = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self._vigi_bubble.add_css_class("vigi-bubble")
+        name_color = "#%02x%02x%02x" % _VIGI_BLUE
+        vigi_name_label = Gtk.Label(valign=Gtk.Align.START)
+        vigi_name_label.set_markup(
+            f'<b><span color="{name_color}">{GLib.markup_escape_text(mascot.NAME)}</span></b>'
+        )
+        vigi_name_label.add_css_class("caption")
+        self._vigi_bubble.append(vigi_name_label)
+        self._vigi_message_label = Gtk.Label(xalign=0, wrap=True, hexpand=True)
+        self._vigi_message_label.add_css_class("caption")
+        self._vigi_bubble.append(self._vigi_message_label)
         title_col.append(self._vigi_bubble)
 
         header_row.append(title_col)
@@ -201,6 +224,10 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.present()
 
     # ------------------------------------------------------------- mascot
+    def _set_vigi_says(self, message: str) -> None:
+        escaped = GLib.markup_escape_text(message)
+        self._vigi_message_label.set_markup(f"<i>“{escaped}”</i>")
+
     def _on_vigi_tick(self, widget: Gtk.Overlay, frame_clock: Gdk.FrameClock) -> bool:
         t_seconds = frame_clock.get_frame_time() / 1_000_000
         phase = (t_seconds % _VIGI_FLOAT_PERIOD_SECONDS) / _VIGI_FLOAT_PERIOD_SECONDS
@@ -218,7 +245,7 @@ class MainWindow(Adw.ApplicationWindow):
         next real state change overwrites it immediately anyway."""
         if not self.is_visible():
             return GLib.SOURCE_REMOVE
-        self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.idle_chatter()}")
+        self._set_vigi_says(mascot.idle_chatter())
         next_delay = random.randint(_IDLE_CHATTER_MIN_INTERVAL_SECONDS, _IDLE_CHATTER_MAX_INTERVAL_SECONDS)
         GLib.timeout_add_seconds(next_delay, self._on_vigi_chatter)
         return GLib.SOURCE_REMOVE  # this firing was one-shot; the line above continues the cycle
@@ -236,7 +263,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._status_title.set_text("Daemon unreachable")
             self._status_detail.set_text(error or "unknown error")
             self._status_dot.set_markup('<span color="#888888">●</span>')
-            self._vigi_bubble.set_text(f"{mascot.NAME}: I can't reach the daemon — is it running?")
+            self._set_vigi_says("I can't reach the daemon — is it running?")
             self._pause_btn.set_sensitive(False)
             self._stop_btn.set_sensitive(False)
             self._resume_btn.set_sensitive(False)
@@ -274,7 +301,7 @@ class MainWindow(Adw.ApplicationWindow):
         # make the bubble flicker between random variants distractingly.
         if state_key != self._last_vigi_state_key:
             self._last_vigi_state_key = state_key
-            self._vigi_bubble.set_text(f"{mascot.NAME}: {mascot.status_message(state_key)}")
+            self._set_vigi_says(mascot.status_message(state_key))
 
         self._pause_btn.set_sensitive(not paused)
         self._resume_btn.set_sensitive(paused)
