@@ -13,7 +13,7 @@ A background daemon actually stops them from running — no root required.
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![GTK4](https://img.shields.io/badge/GTK-4%20%2B%20libadwaita-7f5af0.svg)](#)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-Hyprland-1793d1.svg?logo=archlinux)](#)
-[![Tests](https://img.shields.io/badge/tests-80%20passing-2ec27e.svg)](tests)
+[![Tests](https://github.com/rustyisacat/focusguard/actions/workflows/tests.yml/badge.svg)](https://github.com/rustyisacat/focusguard/actions/workflows/tests.yml)
 
 </div>
 
@@ -349,10 +349,21 @@ hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("focusguardctl toggle School"),
     { description = "FocusGuard: Toggle School mode" })
 ```
 
-### Optional Waybar status indicator
+### Optional status bar indicator
 
-`focusguardctl status --json` prints machine-readable state, so a Waybar
-`custom` module can poll it:
+**Quickshell**: [`packaging/quickshell/FocusGuardIndicator.qml`](packaging/quickshell/FocusGuardIndicator.qml)
+is a small, self-contained bar widget — a colored dot + blocked-app count,
+a hover tooltip with per-profile detail, and right-click to pause 5 min /
+resume. It polls `focusguardctl status --json` directly over a plain
+`Quickshell.Io.Process`, so it has no dependency on any particular shell
+config (illogical-impulse, waffle, or your own from scratch all work) —
+just drop the file next to your other bar widgets and add
+`FocusGuardIndicator {}` inside your bar's `RowLayout`. Verified working
+standalone via `qs -p` against the real daemon (both the inactive and
+actively-blocking states).
+
+**Waybar**: `focusguardctl status --json` prints machine-readable state,
+so a Waybar `custom` module can poll it:
 
 ```jsonc
 "custom/focusguard": {
@@ -405,6 +416,10 @@ python -m venv .venv --system-site-packages   # need system PyGObject/GTK4
 
 `--system-site-packages` is required because PyGObject/GTK bindings are
 installed as system packages on Arch, not via pip.
+
+Every push and PR runs the same suite in CI
+([`.github/workflows/tests.yml`](.github/workflows/tests.yml), Ubuntu +
+apt's GTK4/libadwaita packages) — see the badge at the top of this file.
 
 <br>
 
