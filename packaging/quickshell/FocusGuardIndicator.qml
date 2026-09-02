@@ -48,18 +48,32 @@ Item {
     // alert reaction -- edit freely. Matched case-insensitively as a
     // substring, so "discord" also catches "Discord" and similar.
     property list<string> distractingApps: ["discord", "vesktop", "steam", "telegram", "reddit"]
-    // 1-minute load average (from /proc/loadavg) above which Vigi looks
-    // "flustered" -- not normalized per-core, so tune this to your machine.
-    property real cpuStressThreshold: 3.0
+    // Fraction of total CPU capacity (1-minute load average / core count)
+    // above which Vigi looks "flustered". 0.75 = 75% of all cores busy on
+    // average over the last minute.
+    property real cpuStressThreshold: 0.75
     property int idleTimeoutSeconds: 90
 
     readonly property string activeAppId: (ToplevelManager.activeToplevel?.appId ?? "").toLowerCase()
     readonly property bool distractingAppFocused: root.distractingApps.some(a => root.activeAppId.includes(a))
     readonly property bool musicPlaying: Mpris.players.values.some(p => p.isPlaying)
-    readonly property bool stressed: loadAverage1m > root.cpuStressThreshold
+    readonly property real loadFraction: root.coreCount > 0 ? root.loadAverage1m / root.coreCount : 0
+    readonly property bool stressed: root.loadFraction > root.cpuStressThreshold
     readonly property bool asleep: idleMonitor.isIdle
 
     property real loadAverage1m: 0
+    property int coreCount: 1
+    Process {
+        id: coreCountProc
+        command: ["nproc"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const value = parseInt(text.trim());
+                if (!isNaN(value) && value > 0) root.coreCount = value;
+            }
+        }
+    }
     Timer {
         interval: 5000
         running: true
