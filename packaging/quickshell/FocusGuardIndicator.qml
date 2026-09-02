@@ -5,8 +5,9 @@
 // in any Quickshell config -- no FocusGuard-specific QML dependencies
 // beyond this one file, and no coupling to a particular shell's theme
 // system (illogical-impulse, waffle, or a from-scratch config all work).
-// Does depend on Quickshell's Hyprland and Mpris services (both core
-// Quickshell modules, not ii-specific) for the reactive Vigi below.
+// Does depend on Quickshell's Hyprland, Mpris, Wayland, and Io modules
+// (all core Quickshell modules, not ii-specific) for the reactive Vigi
+// below.
 //
 // Usage: drop this file next to your other bar widgets and add
 // `FocusGuardIndicator {}` inside your bar's RowLayout.
@@ -17,9 +18,15 @@
 //       * grooves faster when music is playing (any MPRIS player)
 //       * flashes amber and gives a little shake when a "distracting" app
 //         (see distractingApps below) is the focused window
+//       * gets a soft pink "flustered" tint and blinks faster when system
+//         load is high (see cpuStressThreshold)
+//       * falls fully asleep (eyes closed, motion stops) after the screen
+//         has been idle for a while (see idleTimeoutSeconds) -- any input
+//         anywhere wakes her back up, same as it un-idles the compositor
 //     Otherwise she just idles: a slow bob + sway and an occasional blink.
-//   - Hover for a tooltip with per-profile detail.
+//   - Left-click to pet her (a little wiggle + a notification reaction).
 //   - Right-click to pause enforcement for 5 minutes / resume immediately.
+//   - Hover for a tooltip with per-profile detail.
 
 import QtQuick
 import QtQuick.Controls
@@ -42,10 +49,52 @@ Item {
     // alert reaction -- edit freely. Matched case-insensitively as a
     // substring, so "discord" also catches "Discord" and similar.
     property list<string> distractingApps: ["discord", "vesktop", "steam", "telegram", "reddit"]
+    // 1-minute load average (from /proc/loadavg) above which Vigi looks
+    // "flustered" -- not normalized per-core, so tune this to your machine.
+    property real cpuStressThreshold: 3.0
+    property int idleTimeoutSeconds: 90
 
     readonly property string activeAppId: (ToplevelManager.activeToplevel?.appId ?? "").toLowerCase()
     readonly property bool distractingAppFocused: root.distractingApps.some(a => root.activeAppId.includes(a))
     readonly property bool musicPlaying: Mpris.players.values.some(p => p.isPlaying)
+    readonly property bool stressed: loadAverage1m > root.cpuStressThreshold
+    readonly property bool asleep: idleMonitor.isIdle
+
+    property real loadAverage1m: 0
+    Timer {
+        interval: 5000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: loadAvgProc.running = true
+    }
+    Process {
+        id: loadAvgProc
+        command: ["cat", "/proc/loadavg"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const first = text.trim().split(" ")[0];
+                const value = parseFloat(first);
+                if (!isNaN(value)) root.loadAverage1m = value;
+            }
+        }
+    }
+
+    IdleMonitor {
+        id: idleMonitor
+        timeout: root.idleTimeoutSeconds
+        enabled: true
+    }
+
+    readonly property var petReactions: [
+        "Hey, that tickles!",
+        "Boop received.",
+        "Still on duty!",
+        "You rang?",
+        "*happy shield noises*",
+        "Vigilance intensifies.",
+        "Wheee!",
+    ]
 
     implicitWidth: row.implicitWidth + 16
     implicitHeight: 24
@@ -81,21 +130,27 @@ Item {
         implicitHeight: rows * cell
 
         // Set from outside -- these change Vigi's motion/color but never
-        // her silhouette. "alert" wins over "grooving" if somehow both
-        // are true (a distracting window focused while music plays).
+        // her silhouette. Priority when several are true at once: asleep
+        // beats everything (stops reacting to a screen nobody's looking
+        // at); otherwise alert (amber) beats stressed (pink) beats
+        // grooving, since "you're looking at something distracting" is
+        // more worth noticing than a vibe or a busy CPU.
         property bool grooving: false
         property bool alert: false
+        property bool stressed: false
+        property bool asleep: false
 
-        readonly property color bodyColor: alert ? "#e0a72a" : "#6b8afd"
-        readonly property color eyeColor: alert ? "#7a4a12" : "#22337a"
+        readonly property color bodyColor: alert ? "#e0a72a" : stressed ? "#e07ba0" : "#6b8afd"
+        readonly property color eyeColor: alert ? "#7a4a12" : stressed ? "#7a1f42" : "#22337a"
 
         // Smooth blink: eye cells scale their height down and back via a
         // Behavior transition rather than an instant frame swap, so it
-        // reads as an eyelid closing instead of a flicker.
+        // reads as an eyelid closing instead of a flicker. Asleep forces
+        // eyes fully shut; stressed blinks noticeably faster ("flustered").
         property bool blinking: false
         Timer {
-            interval: 3400
-            running: true
+            interval: vigi.stressed ? 1200 : 3400
+            running: !vigi.asleep
             repeat: true
             onTriggered: {
                 vigi.blinking = true;
@@ -105,27 +160,33 @@ Item {
         Timer {
             id: blinkOff
             interval: 200
-            onTriggered: vigi.blinking = false
+            onTriggered: {
+                if (!vigi.asleep) vigi.blinking = false;
+            }
         }
+        onAsleepChanged: blinking = asleep
 
-        // Idle motion: a continuous bob + sway, sped up and enlarged
-        // while grooving to music. The "to" targets are live bindings, so
-        // a mood change takes effect from the next loop iteration rather
-        // than an abrupt mid-swing jump.
+        // Idle motion: a continuous bob + sway, sped up and enlarged while
+        // grooving to music, and stopped almost entirely while asleep (a
+        // faint breathing-like bob instead of standing perfectly still).
+        // The "to" targets are live bindings, so a mood change takes
+        // effect from the next loop iteration rather than an abrupt
+        // mid-swing jump.
         property real bob: 0
         property real sway: 0
         SequentialAnimation on bob {
             loops: Animation.Infinite
-            NumberAnimation { to: vigi.grooving ? -5 : -2; duration: vigi.grooving ? 260 : 950; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 0; duration: vigi.grooving ? 260 : 950; easing.type: Easing.InOutSine }
+            NumberAnimation { to: vigi.asleep ? -0.5 : vigi.grooving ? -5 : -2; duration: vigi.asleep ? 1800 : vigi.grooving ? 260 : 950; easing.type: Easing.InOutSine }
+            NumberAnimation { to: 0; duration: vigi.asleep ? 1800 : vigi.grooving ? 260 : 950; easing.type: Easing.InOutSine }
         }
         SequentialAnimation on sway {
             loops: Animation.Infinite
-            NumberAnimation { to: vigi.grooving ? 2.5 : 1; duration: vigi.grooving ? 340 : 1500; easing.type: Easing.InOutSine }
-            NumberAnimation { to: vigi.grooving ? -2.5 : -1; duration: vigi.grooving ? 340 : 1500; easing.type: Easing.InOutSine }
+            NumberAnimation { to: vigi.asleep ? 0 : vigi.grooving ? 2.5 : 1; duration: vigi.grooving ? 340 : 1500; easing.type: Easing.InOutSine }
+            NumberAnimation { to: vigi.asleep ? 0 : vigi.grooving ? -2.5 : -1; duration: vigi.grooving ? 340 : 1500; easing.type: Easing.InOutSine }
         }
 
-        // A quick shake, fired once whenever "alert" turns on.
+        // A quick shake, fired once whenever "alert" turns on, or on
+        // demand when petted (see pet() below).
         property real shakeX: 0
         SequentialAnimation {
             id: shakeAnim
@@ -135,6 +196,10 @@ Item {
             NumberAnimation { target: vigi; property: "shakeX"; to: 0; duration: 55 }
         }
         onAlertChanged: if (alert) shakeAnim.start()
+
+        function pet() {
+            shakeAnim.start();
+        }
 
         Repeater {
             model: vigi.cols * vigi.rows
@@ -208,6 +273,10 @@ Item {
             if (mouse.button === Qt.RightButton) {
                 Quickshell.execDetached(root.paused ? ["focusguardctl", "resume"] : ["focusguardctl", "pause", "5"]);
                 refreshSoon.start();
+            } else if (mouse.button === Qt.LeftButton) {
+                vigiPixel.pet();
+                const line = root.petReactions[Math.floor(Math.random() * root.petReactions.length)];
+                Quickshell.execDetached(["notify-send", "-a", "FocusGuard", "Vigi says:", line]);
             }
         }
 
@@ -223,10 +292,15 @@ Item {
                 base = "FocusGuard: blocking " + root.blockedCount + " app(s)\n(" + root.profileNames.join(", ") + ")\nRight-click to pause 5 min";
             else
                 base = "FocusGuard: inactive\nRight-click to pause 5 min";
-            if (root.distractingAppFocused)
+            if (root.asleep)
+                base += "\n\nVigi: fast asleep. Move the mouse to wake her.";
+            else if (root.distractingAppFocused)
                 base += "\n\nVigi: eyeing that window a little suspiciously.";
+            else if (root.stressed)
+                base += "\n\nVigi: a little flustered -- your CPU's working hard.";
             else if (root.musicPlaying)
                 base += "\n\nVigi: vibing to your music.";
+            base += "\nLeft-click to pet her.";
             return base;
         }
     }
@@ -237,9 +311,12 @@ Item {
         spacing: 5
 
         VigiPixel {
+            id: vigiPixel
             Layout.alignment: Qt.AlignVCenter
             grooving: root.musicPlaying
             alert: root.distractingAppFocused
+            stressed: root.stressed
+            asleep: root.asleep
         }
 
         Rectangle {
