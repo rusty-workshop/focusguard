@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FocusGuard — a real, enforced focus mode for Hyprland</title>
+<meta name="description" content="FocusGuard is a GTK4 app blocker for Arch Linux + Hyprland. Pick apps, schedule them, or block them on the spot — a background daemon actually stops them from running.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><path d=%22M32 4 L56 13 V30 C56 45 46 55 32 60 C18 55 8 45 8 30 V13 Z%22 fill=%22%233a5ce8%22/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1117; --bg2:#151824; --card:#1a1e2b; --border:#262b3a;
+    --text:#e7e9f0; --dim:#9aa1b5; --dimmer:#6b7288;
+    --blue:#6b8afd; --blue2:#3a5ce8; --navy:#22337a;
+    --amber:#e0a72a; --pink:#e07ba0; --green:#2ec27e;
+    --radius:16px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    line-height:1.6; overflow-x:hidden;
+  }
+  code, pre, .mono{font-family:'JetBrains Mono',monospace;}
+  a{color:var(--blue);}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px;}
+
+  /* ---------- nav ---------- */
+  header.nav{
+    position:sticky; top:0; z-index:50;
+    background:rgba(15,17,23,0.85); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .nav-inner{display:flex; align-items:center; justify-content:space-between; padding:14px 24px; max-width:1080px; margin:0 auto;}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px;}
+  .brand img{width:28px; height:28px;}
+  .nav-links{display:flex; gap:28px; align-items:center;}
+  .nav-links a{color:var(--dim); text-decoration:none; font-size:14px; font-weight:500;}
+  .nav-links a:hover{color:var(--text);}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    background:linear-gradient(180deg,var(--blue),var(--blue2));
+    color:white; font-weight:600; font-size:14px;
+    padding:10px 18px; border-radius:10px; text-decoration:none;
+    border:1px solid rgba(255,255,255,0.15);
+    box-shadow:0 4px 14px rgba(58,92,232,0.35);
+  }
+  .btn.secondary{
+    background:var(--card); box-shadow:none; color:var(--text);
+    border:1px solid var(--border);
+  }
+
+  /* ---------- hero ---------- */
+  .hero{
+    padding:88px 24px 60px; text-align:center; position:relative;
+  }
+  .hero::before{
+    content:""; position:absolute; inset:0; z-index:-1;
+    background:radial-gradient(600px 320px at 50% 0%, rgba(107,138,253,0.16), transparent 70%);
+  }
+  .hero img.hero-vigi{width:150px; height:auto; margin-bottom:8px; filter:drop-shadow(0 12px 28px rgba(58,92,232,0.4));}
+  .eyebrow{
+    display:inline-block; font-size:13px; font-weight:600; color:var(--blue);
+    background:rgba(107,138,253,0.12); border:1px solid rgba(107,138,253,0.3);
+    padding:5px 12px; border-radius:999px; margin-bottom:20px;
+  }
+  h1{font-size:clamp(32px,5vw,52px); font-weight:800; margin:0 0 16px; letter-spacing:-0.02em;}
+  h1 .accent{background:linear-gradient(90deg,var(--blue),#a5b8ff); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .lede{font-size:19px; color:var(--dim); max-width:640px; margin:0 auto 34px;}
+  .cta-row{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-bottom:20px;}
+  .badges{display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:28px;}
+  .badges img{height:20px;}
+
+  /* ---------- terminal ---------- */
+  .terminal{
+    max-width:620px; margin:52px auto 0; text-align:left;
+    background:#0b0d13; border:1px solid var(--border); border-radius:12px;
+    overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .terminal-bar{display:flex; gap:6px; padding:10px 14px; background:#12141c; border-bottom:1px solid var(--border);}
+  .terminal-bar span{width:11px; height:11px; border-radius:50%; display:block;}
+  .terminal-bar span:nth-child(1){background:#ff5f57;}
+  .terminal-bar span:nth-child(2){background:#febc2e;}
+  .terminal-bar span:nth-child(3){background:#28c840;}
+  .terminal pre{margin:0; padding:20px; font-size:14px; color:#c9d1e6; overflow-x:auto;}
+  .terminal .prompt{color:var(--green);}
+  .terminal .comment{color:var(--dimmer);}
+
+  /* ---------- sections ---------- */
+  section{padding:70px 0;}
+  .section-head{text-align:center; max-width:600px; margin:0 auto 48px;}
+  .section-head .eyebrow{margin-bottom:14px;}
+  .section-head h2{font-size:clamp(26px,4vw,36px); font-weight:800; margin:0 0 12px; letter-spacing:-0.01em;}
+  .section-head p{color:var(--dim); margin:0; font-size:16px;}
+
+  /* meet vigi */
+  .vigi-card{
+    display:flex; gap:40px; align-items:center;
+    background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+    padding:40px; flex-wrap:wrap;
+  }
+  .vigi-card img{width:140px; flex-shrink:0; margin:0 auto;}
+  .vigi-card .body{flex:1; min-width:260px;}
+  .vigi-card h3{margin:0 0 12px; font-size:22px;}
+  .reaction-list{list-style:none; padding:0; margin:18px 0 0; display:grid; gap:10px;}
+  .reaction-list li{display:flex; gap:10px; font-size:14.5px; color:var(--dim);}
+  .reaction-list li b{color:var(--text); font-weight:600; min-width:80px;}
+
+  /* features grid */
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:18px;}
+  .feature{
+    background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:24px; transition:transform 0.15s, border-color 0.15s;
+  }
+  .feature:hover{transform:translateY(-3px); border-color:rgba(107,138,253,0.4);}
+  .feature .icon{font-size:26px; margin-bottom:14px; display:block;}
+  .feature h3{font-size:16px; margin:0 0 8px; font-weight:600;}
+  .feature p{font-size:14px; color:var(--dim); margin:0;}
+
+  /* screenshot */
+  .shot{
+    border-radius:14px; border:1px solid var(--border); overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,0.45);
+  }
+  .shot img{display:block; width:100%;}
+
+  /* compare table */
+  table.compare{width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden;}
+  table.compare th, table.compare td{text-align:left; padding:16px 20px; border-bottom:1px solid var(--border); font-size:14.5px;}
+  table.compare th{background:var(--bg2); color:var(--dim); font-weight:600; font-size:13px; text-transform:uppercase; letter-spacing:0.03em;}
+  table.compare tr:last-child td{border-bottom:none;}
+  table.compare td:first-child{font-weight:600; color:var(--text); white-space:nowrap;}
+  table.compare td:last-child{color:var(--dim);}
+
+  /* install tabs */
+  .tabs{display:flex; gap:8px; margin-bottom:0; border-bottom:1px solid var(--border);}
+  .tab-btn{
+    background:none; border:none; color:var(--dim); font-family:inherit; font-size:14px; font-weight:600;
+    padding:12px 18px; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active{color:var(--text); border-bottom-color:var(--blue);}
+  .tab-panel{display:none; padding-top:20px;}
+  .tab-panel.active{display:block;}
+  .code-block{
+    background:#0b0d13; border:1px solid var(--border); border-radius:10px;
+    padding:18px 20px; font-size:14px; color:#c9d1e6; overflow-x:auto; position:relative;
+    white-space:pre; font-family:'JetBrains Mono',monospace;
+  }
+  .code-block .comment{color:var(--dimmer);}
+
+  /* footer */
+  footer{border-top:1px solid var(--border); padding:40px 24px; text-align:center; color:var(--dimmer); font-size:13.5px;}
+  footer a{color:var(--dim); text-decoration:none;}
+  footer a:hover{color:var(--text);}
+  .footer-links{display:flex; gap:20px; justify-content:center; margin-bottom:16px; flex-wrap:wrap;}
+
+  @media (max-width:640px){
+    .vigi-card{flex-direction:column; text-align:center; padding:28px;}
+    .reaction-list li{flex-direction:column; gap:2px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand"><img src="vigi.svg" alt=""><span>FocusGuard</span></div>
+    <nav class="nav-links">
+      <a href="#vigi">Vigi</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a class="btn secondary" href="https://github.com/rustyisacat/focusguard">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <img class="hero-vigi" src="vigi.svg" alt="Vigi, the FocusGuard mascot">
+    <div class="eyebrow">Arch Linux + Hyprland</div>
+    <h1>A <span class="accent">real, enforced</span><br>focus mode — guarded by Vigi</h1>
+    <p class="lede">Pick apps in a native GTK4 window. Schedule them, or block them on the spot.
+      A background daemon actually stops them from running. No root required.</p>
+    <div class="cta-row">
+      <a class="btn" href="https://github.com/rustyisacat/focusguard">View on GitHub</a>
+      <a class="btn secondary" href="#install">Install instructions</a>
+    </div>
+    <div class="badges">
+      <img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" alt="License">
+      <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+      <img src="https://github.com/rustyisacat/focusguard/actions/workflows/tests.yml/badge.svg" alt="Tests">
+    </div>
+
+    <div class="terminal">
+      <div class="terminal-bar"><span></span><span></span><span></span></div>
+      <pre><span class="prompt">$</span> focusguardctl vigi
+
+     .-------.
+    /  o   o  \
+   |     ‿     |
+    \_________/
+       Vigi
+
+  Vigilance intensifies.
+
+<span class="comment"># a block that actually blocks</span>
+<span class="prompt">$</span> focusguardctl start School
+ACTIVE - blocking 4 app(s)
+  School               ACTIVE</pre>
+    </div>
+  </div>
+</section>
+
+<section id="vigi">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Meet the mascot</div>
+      <h2>Vigi is always on watch</h2>
+      <p>A small shield who blinks, glances around, waves, and shows up the moment
+        a blocked app gets caught — not a nag, just a friendly redirect.</p>
+    </div>
+    <div class="vigi-card">
+      <img src="vigi.svg" alt="Vigi">
+      <div class="body">
+        <h3>She reacts to more than just blocking</h3>
+        <p style="color:var(--dim); margin:0;">In the optional Quickshell bar widget, pixel-art Vigi keeps tabs on what's
+          actually happening on your screen — independent of whether FocusGuard is blocking anything.</p>
+        <ul class="reaction-list">
+          <li><b>🎵 Music</b> grooves faster when any MPRIS player is playing</li>
+          <li><b>👀 Alert</b> flashes amber and shakes when a distracting app is focused</li>
+          <li><b>😳 Stressed</b> turns pink and blinks fast when your CPU is under load</li>
+          <li><b>😴 Asleep</b> eyes shut, motion stops, after the screen's been idle a while</li>
+          <li><b>🐾 Petting</b> left-click for a wiggle and a random reaction line</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">What it does</div>
+      <h2>Everything a focus mode should be</h2>
+      <p>Not a honor-system timer. Not built for a desktop you're not running.</p>
+    </div>
+    <div class="grid">
+      <div class="feature"><span class="icon">🖥️</span><h3>Native GTK4 + libadwaita</h3><p>Not a web page in a window. A real, polished Linux desktop app.</p></div>
+      <div class="feature"><span class="icon">🔍</span><h3>Real app discovery</h3><p>Via Gio.DesktopAppInfo, with icons, search, Select All / Clear All.</p></div>
+      <div class="feature"><span class="icon">📅</span><h3>Schedules</h3><p>Days of week, start/end time — correctly handles windows that cross midnight.</p></div>
+      <div class="feature"><span class="icon">⚡</span><h3>Manual sessions</h3><p>"Start School now for 45 minutes" from the GUI or CLI, no schedule needed.</p></div>
+      <div class="feature"><span class="icon">🧩</span><h3>Multiple profiles</h3><p>School, Study, Gaming, Bedtime — each with its own apps, schedule, and duration.</p></div>
+      <div class="feature"><span class="icon">⏸️</span><h3>Explicit override</h3><p>Pause 5 min / Stop Mode / Resume — visible, deliberate, never a silent bypass.</p></div>
+      <div class="feature"><span class="icon">🔔</span><h3>Desktop notifications</h3><p>On block start/end, with a friendly nudge line from Vigi — throttled per app.</p></div>
+      <div class="feature"><span class="icon">⌨️</span><h3>Hyprland keybind ready</h3><p>A scriptable CLI — you choose the key, nothing touches your Hyprland config.</p></div>
+      <div class="feature"><span class="icon">🔒</span><h3>No root, ever</h3><p>Runs entirely as your user, with a locked-down socket and protected processes.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">The GUI</div>
+      <h2>See what's blocked, at a glance</h2>
+      <p>Status, controls, and profiles — all in one clean window.</p>
+    </div>
+    <div class="shot"><img src="screenshot.png" alt="FocusGuard main window"></div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Why not an existing tool?</div>
+      <h2>Timers don't enforce anything</h2>
+    </div>
+    <table class="compare">
+      <tr><th>Tool</th><th>Why it doesn't fit</th></tr>
+      <tr><td>Timekpr-nExT</td><td>Manages session time budgets — no concept of blocking individual apps while you're logged in.</td></tr>
+      <tr><td>Malcontent</td><td>Built around Flatpak's permission store and GNOME session services — a poor fit for a minimal Hyprland setup.</td></tr>
+      <tr><td>cgroups alone</td><td>Can throttle a process group but can't stop a new one from launching without root + a BPF LSM filter.</td></tr>
+    </table>
+    <p style="text-align:center; color:var(--dim); margin-top:24px; font-size:15px;">
+      So FocusGuard does what this class of tool has always done on Linux without root:
+      a fast poll-and-kill loop over <code>/proc</code>, matched against exact executable signatures.
+    </p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">Get started</div>
+      <h2>Install on Arch Linux</h2>
+      <p>Two ways in — pick whichever fits your workflow.</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="pkgbuild">PKGBUILD</button>
+      <button class="tab-btn" data-tab="pip">pip</button>
+    </div>
+
+    <div class="tab-panel active" id="pkgbuild">
+      <div class="code-block"><span class="comment"># dependencies</span>
+sudo pacman -S python python-gobject gtk4 libadwaita
+
+<span class="comment"># build + install</span>
+git clone https://github.com/rustyisacat/focusguard.git
+cd focusguard
+makepkg -si
+
+<span class="comment"># enable the daemon</span>
+systemctl --user daemon-reload
+systemctl --user enable --now focusguard.service</div>
+    </div>
+
+    <div class="tab-panel" id="pip">
+      <div class="code-block"><span class="comment"># dependencies</span>
+sudo pacman -S python python-gobject gtk4 libadwaita
+
+<span class="comment"># install</span>
+git clone https://github.com/rustyisacat/focusguard.git
+cd focusguard
+pip install --user .
+
+<span class="comment"># then install the systemd unit + desktop file --
+# see the README's Installing section for the full steps</span></div>
+    </div>
+
+    <p style="text-align:center; margin-top:28px;">
+      <a href="https://github.com/rustyisacat/focusguard#readme">Full README →</a>
+      with configuration docs, CLI reference, Quickshell/Waybar widgets, and security notes.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/rustyisacat/focusguard">GitHub</a>
+    <a href="https://github.com/rustyisacat/focusguard/blob/main/README.md">README</a>
+    <a href="https://github.com/rustyisacat/focusguard/blob/main/LICENSE">AGPL-3.0-or-later</a>
+    <a href="https://github.com/rustyisacat/focusguard/issues">Issues</a>
+  </div>
+  <div>FocusGuard — built for Arch Linux + Hyprland.</div>
+</footer>
+
+<script>
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>
