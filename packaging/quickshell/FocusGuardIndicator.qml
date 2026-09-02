@@ -29,7 +29,6 @@
 //   - Hover for a tooltip with per-profile detail.
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -264,6 +263,29 @@ Item {
         }
     }
 
+    // A short, single-line tooltip we draw and size ourselves, anchored
+    // below the widget. The stock QQC2 ToolTip (Basic style, per this
+    // shell's QT_QUICK_CONTROLS_STYLE=Basic) rendered with a large default
+    // font/padding and multi-line text, ending up big enough to cover
+    // Vigi herself while hovering -- exactly backwards for a mascot you're
+    // hovering *to look at*.
+    readonly property string tooltipLine: {
+        if (!root.daemonReachable) return "FocusGuard: daemon not running";
+        if (root.asleep) return "Vigi is asleep — move the mouse";
+        if (root.distractingAppFocused) return "Vigi noticed that window...";
+        if (root.stressed) return "Vigi is flustered (high CPU)";
+        if (root.musicPlaying) return "Vigi is vibing to the music";
+        if (root.paused) return "Paused — right-click to resume";
+        if (root.blockedCount > 0) return "Blocking " + root.blockedCount + " app(s) — right-click to pause";
+        return "FocusGuard idle — click to pet, right-click to pause";
+    }
+    property bool showTooltip: false
+    Timer {
+        id: tooltipDelay
+        interval: 500
+        onTriggered: root.showTooltip = true
+    }
+
     MouseArea {
         id: mouseArea
         anchors.fill: parent
@@ -279,29 +301,40 @@ Item {
                 Quickshell.execDetached(["notify-send", "-a", "FocusGuard", "Vigi says:", line]);
             }
         }
+        onContainsMouseChanged: {
+            if (containsMouse) {
+                tooltipDelay.start();
+            } else {
+                tooltipDelay.stop();
+                root.showTooltip = false;
+            }
+        }
+    }
 
-        ToolTip.visible: containsMouse
-        ToolTip.delay: 400
-        ToolTip.text: {
-            let base;
-            if (!root.daemonReachable)
-                base = "FocusGuard: daemon not running";
-            else if (root.paused)
-                base = "FocusGuard: paused\nRight-click to resume";
-            else if (root.blockedCount > 0)
-                base = "FocusGuard: blocking " + root.blockedCount + " app(s)\n(" + root.profileNames.join(", ") + ")\nRight-click to pause 5 min";
-            else
-                base = "FocusGuard: inactive\nRight-click to pause 5 min";
-            if (root.asleep)
-                base += "\n\nVigi: fast asleep. Move the mouse to wake her.";
-            else if (root.distractingAppFocused)
-                base += "\n\nVigi: eyeing that window a little suspiciously.";
-            else if (root.stressed)
-                base += "\n\nVigi: a little flustered -- your CPU's working hard.";
-            else if (root.musicPlaying)
-                base += "\n\nVigi: vibing to your music.";
-            base += "\nLeft-click to pet her.";
-            return base;
+    Rectangle {
+        id: tooltipBubble
+        z: 1000
+        opacity: root.showTooltip ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity {
+            NumberAnimation { duration: 120 }
+        }
+        anchors.top: parent.bottom
+        anchors.topMargin: 6
+        anchors.horizontalCenter: parent.horizontalCenter
+        implicitWidth: tooltipLabel.implicitWidth + 16
+        implicitHeight: tooltipLabel.implicitHeight + 8
+        radius: 6
+        color: "#1e1e2e"
+        border.width: 1
+        border.color: "#3a5ce8"
+
+        Text {
+            id: tooltipLabel
+            anchors.centerIn: parent
+            text: root.tooltipLine
+            color: "#cfd6f5"
+            font.pixelSize: 11
         }
     }
 
