@@ -376,15 +376,33 @@ hl.bind("SUPER + SHIFT + F", hl.dsp.exec_cmd("focusguardctl toggle School"),
 ### Optional status bar indicator
 
 **Quickshell**: [`packaging/quickshell/FocusGuardIndicator.qml`](packaging/quickshell/FocusGuardIndicator.qml)
-is a small, self-contained bar widget — a colored dot + blocked-app count,
-a hover tooltip with per-profile detail, and right-click to pause 5 min /
-resume. It polls `focusguardctl status --json` directly over a plain
-`Quickshell.Io.Process`, so it has no dependency on any particular shell
-config (illogical-impulse, waffle, or your own from scratch all work) —
-just drop the file next to your other bar widgets and add
-`FocusGuardIndicator {}` inside your bar's `RowLayout`. Verified working
-standalone via `qs -p` against the real daemon (both the inactive and
-actively-blocking states).
+is a small, self-contained bar widget with a tiny pixel-art Vigi (built
+entirely from `Rectangle`s, no image asset) next to a colored status dot +
+blocked-app count. It polls `focusguardctl status --json` directly over a
+plain `Quickshell.Io.Process`, so it has no dependency on any particular
+shell config (illogical-impulse, waffle, or your own from scratch all
+work) — just drop the file next to your other bar widgets and add
+`FocusGuardIndicator {}` inside your bar's `RowLayout`.
+
+Pixel Vigi reacts to what's actually happening on screen — independent of
+whether FocusGuard is blocking anything:
+
+- Grooves faster when music is playing (any MPRIS player)
+- Flashes amber and shakes when a "distracting" app (`distractingApps`,
+  editable) is the focused window
+- Turns pink and blinks faster when system load is high
+  (`cpuStressThreshold`)
+- Falls asleep (eyes shut, motion stops) after the screen's been idle a
+  while (`idleTimeoutSeconds`) — any input wakes her
+- Left-click to pet her (a wiggle + a notification reaction); right-click
+  still pauses 5 min / resumes; hover for a tooltip with per-profile
+  detail plus whichever mood is currently active
+
+Verified against real conditions — a real daemon (inactive and
+actively-blocking states), real `/proc/loadavg` output, and the real
+focused-window/MPRIS state — using a `visible: false` test window plus a
+timer that logs and quits, so none of it required popping a visible
+window onto the desktop to check.
 
 **Waybar**: `focusguardctl status --json` prints machine-readable state,
 so a Waybar `custom` module can poll it:
