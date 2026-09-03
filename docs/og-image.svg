@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bodyg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6b8afd"/>
+      <stop offset="1" stop-color="#3a5ce8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="30%" cy="35%" r="65%">
+      <stop offset="0" stop-color="#6b8afd" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#6b8afd" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0f1117"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Vigi shield, right side -->
+  <g transform="translate(870,120) scale(2.6)">
+    <ellipse cx="60" cy="141" rx="30" ry="6" fill="#000000" opacity="0.15"/>
+    <circle cx="60" cy="62" r="46" fill="none" stroke="#6b8afd" stroke-width="2" opacity="0.5"/>
+    <ellipse cx="46" cy="118" rx="9" ry="5" fill="#2a3f8f"/>
+    <ellipse cx="74" cy="118" rx="9" ry="5" fill="#2a3f8f"/>
+    <ellipse cx="11" cy="92" rx="9" ry="16" fill="#3450c9" stroke="#22337a" stroke-width="1.5" transform="rotate(-18 11 92)"/>
+    <ellipse cx="109" cy="92" rx="9" ry="16" fill="#3450c9" stroke="#22337a" stroke-width="1.5" transform="rotate(18 109 92)"/>
+    <path d="M60 8 L105 24 V56 C105 84 86 103 60 113 C34 103 15 84 15 56 V24 Z"
+          fill="url(#bodyg)" stroke="#22337a" stroke-width="2"/>
+    <path d="M49 89 Q60 97 71 89" fill="none" stroke="#22337a" stroke-width="3" stroke-linecap="round"/>
+    <rect x="40" y="53" width="13" height="23" rx="6.5" fill="#22337a"/>
+    <rect x="67" y="53" width="13" height="23" rx="6.5" fill="#22337a"/>
+    <circle cx="44.5" cy="60.5" r="2.4" fill="#ffffff"/>
+    <circle cx="71.5" cy="60.5" r="2.4" fill="#ffffff"/>
+  </g>
+
+  <!-- text -->
+  <g font-family="Inter, -apple-system, sans-serif">
+    <text x="80" y="230" font-size="26" font-weight="600" fill="#6b8afd" letter-spacing="0.5">ARCH LINUX + HYPRLAND</text>
+    <text x="76" y="320" font-size="66" font-weight="800" fill="#e7e9f0" letter-spacing="-1">A real, enforced</text>
+    <text x="76" y="392" font-size="66" font-weight="800" letter-spacing="-1">
+      <tspan fill="#a5b8ff">focus mode</tspan><tspan fill="#e7e9f0">, guarded</tspan>
+    </text>
+    <text x="76" y="464" font-size="66" font-weight="800" fill="#e7e9f0" letter-spacing="-1">by Vigi</text>
+    <text x="80" y="524" font-size="24" fill="#9aa1b5">A GTK4 app blocker with a background daemon that</text>
+    <text x="80" y="558" font-size="24" fill="#9aa1b5">actually stops blocked apps from running.</text>
+  </g>
+
+  <text x="80" y="596" font-size="22" font-weight="700" fill="#6b8afd">FocusGuard</text>
+</svg>
