@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FocusGuard — a real, enforced focus mode for Hyprland</title>
-<meta name="description" content="FocusGuard is a GTK4 app blocker for Arch Linux + Hyprland. Pick apps, schedule them, or block them on the spot — a background daemon actually stops them from running.">
+<title>FocusGuard: a real, enforced focus mode for Hyprland</title>
+<meta name="description" content="FocusGuard is a GTK4 app blocker for Arch Linux + Hyprland. Pick apps, schedule them, or block them on the spot, and a background daemon actually stops them from running.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><path d=%22M32 4 L56 13 V30 C56 45 46 55 32 60 C18 55 8 45 8 30 V13 Z%22 fill=%22%233a5ce8%22/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -181,7 +181,7 @@
   <div class="wrap">
     <img class="hero-vigi" src="vigi.svg" alt="Vigi, the FocusGuard mascot">
     <div class="eyebrow">Arch Linux + Hyprland</div>
-    <h1>A <span class="accent">real, enforced</span><br>focus mode — guarded by Vigi</h1>
+    <h1>A <span class="accent">real, enforced</span><br>focus mode, guarded by Vigi</h1>
     <p class="lede">Pick apps in a native GTK4 window. Schedule them, or block them on the spot.
       A background daemon actually stops them from running. No root required.</p>
     <div class="cta-row">
@@ -220,14 +220,14 @@ ACTIVE - blocking 4 app(s)
       <div class="eyebrow">Meet the mascot</div>
       <h2>Vigi is always on watch</h2>
       <p>A small shield who blinks, glances around, waves, and shows up the moment
-        a blocked app gets caught — not a nag, just a friendly redirect.</p>
+        a blocked app gets caught, not a nag, just a friendly redirect.</p>
     </div>
     <div class="vigi-card">
       <img src="vigi.svg" alt="Vigi">
       <div class="body">
         <h3>She reacts to more than just blocking</h3>
         <p style="color:var(--dim); margin:0;">In the optional Quickshell bar widget, pixel-art Vigi keeps tabs on what's
-          actually happening on your screen — independent of whether FocusGuard is blocking anything.</p>
+          actually happening on your screen, independent of whether FocusGuard is blocking anything.</p>
         <ul class="reaction-list">
           <li><b>🎵 Music</b> grooves faster when any MPRIS player is playing</li>
           <li><b>👀 Alert</b> flashes amber and shakes when a distracting app is focused</li>
@@ -250,12 +250,12 @@ ACTIVE - blocking 4 app(s)
     <div class="grid">
       <div class="feature"><span class="icon">🖥️</span><h3>Native GTK4 + libadwaita</h3><p>Not a web page in a window. A real, polished Linux desktop app.</p></div>
       <div class="feature"><span class="icon">🔍</span><h3>Real app discovery</h3><p>Via Gio.DesktopAppInfo, with icons, search, Select All / Clear All.</p></div>
-      <div class="feature"><span class="icon">📅</span><h3>Schedules</h3><p>Days of week, start/end time — correctly handles windows that cross midnight.</p></div>
+      <div class="feature"><span class="icon">📅</span><h3>Schedules</h3><p>Days of week, start/end time, correctly handles windows that cross midnight.</p></div>
       <div class="feature"><span class="icon">⚡</span><h3>Manual sessions</h3><p>"Start School now for 45 minutes" from the GUI or CLI, no schedule needed.</p></div>
-      <div class="feature"><span class="icon">🧩</span><h3>Multiple profiles</h3><p>School, Study, Gaming, Bedtime — each with its own apps, schedule, and duration.</p></div>
-      <div class="feature"><span class="icon">⏸️</span><h3>Explicit override</h3><p>Pause 5 min / Stop Mode / Resume — visible, deliberate, never a silent bypass.</p></div>
-      <div class="feature"><span class="icon">🔔</span><h3>Desktop notifications</h3><p>On block start/end, with a friendly nudge line from Vigi — throttled per app.</p></div>
-      <div class="feature"><span class="icon">⌨️</span><h3>Hyprland keybind ready</h3><p>A scriptable CLI — you choose the key, nothing touches your Hyprland config.</p></div>
+      <div class="feature"><span class="icon">🧩</span><h3>Multiple profiles</h3><p>School, Study, Gaming, Bedtime, each with its own apps, schedule, and duration.</p></div>
+      <div class="feature"><span class="icon">⏸️</span><h3>Explicit override</h3><p>Pause 5 min, Stop Mode, or Resume: visible, deliberate, never a silent bypass.</p></div>
+      <div class="feature"><span class="icon">🔔</span><h3>Desktop notifications</h3><p>On block start/end, with a friendly nudge line from Vigi, throttled per app.</p></div>
+      <div class="feature"><span class="icon">⌨️</span><h3>Hyprland keybind ready</h3><p>A scriptable CLI: you choose the key, nothing touches your Hyprland config.</p></div>
       <div class="feature"><span class="icon">🔒</span><h3>No root, ever</h3><p>Runs entirely as your user, with a locked-down socket and protected processes.</p></div>
     </div>
   </div>
@@ -266,7 +266,7 @@ ACTIVE - blocking 4 app(s)
     <div class="section-head">
       <div class="eyebrow">The GUI</div>
       <h2>See what's blocked, at a glance</h2>
-      <p>Status, controls, and profiles — all in one clean window.</p>
+      <p>Status, controls, and profiles, all in one clean window.</p>
     </div>
     <div class="shot"><img src="screenshot.png" alt="FocusGuard main window"></div>
   </div>
@@ -280,8 +280,8 @@ ACTIVE - blocking 4 app(s)
     </div>
     <table class="compare">
       <tr><th>Tool</th><th>Why it doesn't fit</th></tr>
-      <tr><td>Timekpr-nExT</td><td>Manages session time budgets — no concept of blocking individual apps while you're logged in.</td></tr>
-      <tr><td>Malcontent</td><td>Built around Flatpak's permission store and GNOME session services — a poor fit for a minimal Hyprland setup.</td></tr>
+      <tr><td>Timekpr-nExT</td><td>Manages session time budgets, no concept of blocking individual apps while you're logged in.</td></tr>
+      <tr><td>Malcontent</td><td>Built around Flatpak's permission store and GNOME session services, a poor fit for a minimal Hyprland setup.</td></tr>
       <tr><td>cgroups alone</td><td>Can throttle a process group but can't stop a new one from launching without root + a BPF LSM filter.</td></tr>
     </table>
     <p style="text-align:center; color:var(--dim); margin-top:24px; font-size:15px;">
@@ -296,7 +296,7 @@ ACTIVE - blocking 4 app(s)
     <div class="section-head">
       <div class="eyebrow">Get started</div>
       <h2>Install on Arch Linux</h2>
-      <p>Two ways in — pick whichever fits your workflow.</p>
+      <p>Two ways in, pick whichever fits your workflow.</p>
     </div>
 
     <div class="tabs">
@@ -344,8 +344,9 @@ pip install --user .
     <a href="https://github.com/rustyisacat/focusguard/blob/main/README.md">README</a>
     <a href="https://github.com/rustyisacat/focusguard/blob/main/LICENSE">AGPL-3.0-or-later</a>
     <a href="https://github.com/rustyisacat/focusguard/issues">Issues</a>
+    <a href="https://rusty.is-a.dev">More by Rusty</a>
   </div>
-  <div>FocusGuard — built for Arch Linux + Hyprland.</div>
+  <div>FocusGuard, built for Arch Linux + Hyprland.</div>
 </footer>
 
 <script>
