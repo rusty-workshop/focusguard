@@ -13,7 +13,9 @@ A background daemon actually stops them from running — no root required.
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
 [![GTK4](https://img.shields.io/badge/GTK-4%20%2B%20libadwaita-7f5af0.svg)](#)
 [![Arch Linux](https://img.shields.io/badge/Arch%20Linux-Hyprland-1793d1.svg?logo=archlinux)](#)
-[![Tests](https://github.com/rustyisacat/focusguard/actions/workflows/tests.yml/badge.svg)](https://github.com/rustyisacat/focusguard/actions/workflows/tests.yml)
+[![Tests](https://github.com/rusty-workshop/focusguard/actions/workflows/tests.yml/badge.svg)](https://github.com/rusty-workshop/focusguard/actions/workflows/tests.yml)
+
+🌐 **[Live site](https://focusguard.rusty.is-a.dev/)**
 
 </div>
 
@@ -211,7 +213,7 @@ recommended but optional — see [Notifications](#notifications).
 ### Option A: PKGBUILD (recommended)
 
 ```bash
-git clone https://github.com/rustyisacat/focusguard.git
+git clone https://github.com/rusty-workshop/focusguard.git
 cd focusguard
 makepkg -si
 ```
@@ -222,7 +224,7 @@ user unit, the desktop entry, and the icon under `/usr`.
 ### Option B: pip (user install)
 
 ```bash
-git clone https://github.com/rustyisacat/focusguard.git
+git clone https://github.com/rusty-workshop/focusguard.git
 cd focusguard
 pip install --user .
 ```
