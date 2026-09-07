@@ -22,6 +22,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 
 from .common import mascot, paths
 from .common.config import ConfigError, load_config
@@ -123,17 +124,55 @@ def _cmd_doctor(as_json: bool) -> int:
 
 
 # ------------------------------------------------------------------- vigi
-_VIGI_ART = r"""
-     .-------.
-    /  o   o  \
-   |     ‿     |
-    \_________/
-       Vigi
-"""
+def _vigi_art_lines(eyes_open: bool) -> list[str]:
+    eyes = "o   o" if eyes_open else "-   -"
+    return [
+        "     .-------.",
+        f"    /  {eyes}  \\",
+        "   |     \u203f     |",
+        "    \\_________/",
+        "       Vigi",
+    ]
+
+
+_VIGI_ART = "\n".join(_vigi_art_lines(eyes_open=True))
+
+# (bob, eyes_open) per animation frame. Bob shifts the whole art down by one
+# blank line rather than side to side, since a terminal cell isn't square --
+# horizontal padding reads as a lean, not a bob.
+_VIGI_ANIM_SEQUENCE = [
+    (0, True), (0, True), (1, True), (1, True),
+    (1, False),  # blink
+    (1, True), (0, True), (0, True),
+]
+_VIGI_FRAME_HEIGHT = 6  # 1 possible blank line + 5 art lines, held constant
+_VIGI_FRAME_DELAY_SECONDS = 0.15
+
+
+def _render_vigi_frame(bob: int, eyes_open: bool) -> list[str]:
+    lines = [""] * bob + _vigi_art_lines(eyes_open)
+    lines += [""] * (_VIGI_FRAME_HEIGHT - len(lines))
+    return lines
 
 
 def _cmd_vigi() -> int:
-    print(_VIGI_ART)
+    # Piped/redirected output (including test capture, which isn't a tty)
+    # gets the plain static art -- no point emitting ANSI cursor-movement
+    # codes somewhere they won't be interpreted.
+    if not sys.stdout.isatty():
+        print(_VIGI_ART)
+        print(f"  {mascot.click_reaction()}")
+        return 0
+
+    first = True
+    for bob, eyes_open in _VIGI_ANIM_SEQUENCE:
+        if not first:
+            sys.stdout.write(f"\033[{_VIGI_FRAME_HEIGHT}A")
+        first = False
+        for line in _render_vigi_frame(bob, eyes_open):
+            sys.stdout.write("\033[2K" + line + "\n")
+        sys.stdout.flush()
+        time.sleep(_VIGI_FRAME_DELAY_SECONDS)
     print(f"  {mascot.click_reaction()}")
     return 0
 

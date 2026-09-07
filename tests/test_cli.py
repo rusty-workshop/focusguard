@@ -79,6 +79,34 @@ def test_vigi_prints_art_and_a_reaction_line(capsys):
     assert any(line in out for line in mascot.CLICK_REACTIONS)
 
 
+def test_vigi_non_tty_output_has_no_escape_codes(capsys):
+    # capsys-captured stdout is never a tty; this locks in that the
+    # animation path (ANSI cursor movement) is skipped when output isn't
+    # interactive -- e.g. piped, redirected, or captured by a test.
+    _main(["vigi"])
+    out = capsys.readouterr().out
+    assert "\033[" not in out
+
+
+def test_vigi_animation_frame_count_is_constant():
+    for bob, eyes_open in cli._VIGI_ANIM_SEQUENCE:
+        assert len(cli._render_vigi_frame(bob, eyes_open)) == cli._VIGI_FRAME_HEIGHT
+
+
+def test_vigi_animation_includes_exactly_one_blink():
+    blinks = [eyes_open for _, eyes_open in cli._VIGI_ANIM_SEQUENCE if not eyes_open]
+    assert len(blinks) == 1
+
+
+def test_vigi_art_lines_toggle_eyes():
+    open_art = "\n".join(cli._vigi_art_lines(eyes_open=True))
+    closed_art = "\n".join(cli._vigi_art_lines(eyes_open=False))
+    assert "o   o" in open_art
+    assert "-   -" in closed_art
+    # everything else about the drawing stays the same
+    assert open_art.replace("o   o", "X") == closed_art.replace("-   -", "X")
+
+
 def test_doctor_all_checks_pass_exits_zero(capsys):
     with patch.object(cli, "_run_doctor_checks", return_value=[
         ("config.json parses", True, ""),

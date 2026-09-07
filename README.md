@@ -328,7 +328,7 @@ focusguardctl resume              # cancel an active pause immediately
 focusguardctl toggle <profile>    # start if inactive, stop if active — ideal for a keybind
 focusguardctl reload              # force-reload config.json from disk
 focusguardctl doctor              # check daemon/socket/systemd/config health, exits 1 if anything's wrong
-focusguardctl vigi                # say hi to Vigi
+focusguardctl vigi                # say hi to Vigi (a little blink+bob animation in an interactive terminal)
 ```
 
 Add `--json` *after* any command (e.g. `focusguardctl status --json`) for
