@@ -53,9 +53,15 @@ def _resolve_signatures(app_info: Gio.DesktopAppInfo) -> List[str]:
         resolved = executable if os.path.isabs(executable) else shutil.which(executable)
         if resolved and os.path.exists(resolved):
             real = os.path.realpath(resolved)
-            sigs.add(real)
             real_base = os.path.basename(real)
+            # The generic-wrapper check has to gate the *absolute* signature
+            # too, not just the bare basename -- an app whose Exec is e.g.
+            # `bash -c "..."` resolves to /usr/bin/bash here, and adding
+            # that path as a signature would match every bash process on
+            # the system, not just this app (this really happened: it
+            # SIGTERM'd an unrelated battery.sh script).
             if real_base and real_base not in _GENERIC_WRAPPERS:
+                sigs.add(real)
                 sigs.add(real_base)
 
     # Flatpak apps: Exec is "flatpak run ... <app-id>". The app-id shows up

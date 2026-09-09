@@ -15,6 +15,7 @@ Two GLib quirks drive how these tests are built:
 """
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -81,16 +82,35 @@ def test_simple_app_resolves_basename_signature(tmp_path):
 def test_wrapper_script_does_not_produce_generic_signature(tmp_path):
     # "env" is a real, always-present binary -- exactly the wrapper case we
     # must not treat as a standalone signature (it would match nearly every
-    # other process on the system).
+    # other process on the system). Since the thing it wraps doesn't exist,
+    # there's nothing safe left to match on at all -- correct behavior is no
+    # signature (None), same as the bash -c wrapper case below, not falling
+    # back to "env" (bare or absolute) as a signature of last resort.
     sigs = _run(tmp_path, "wrapped-test.desktop", """\
         [Desktop Entry]
         Type=Application
         Name=Wrapped Test
         Exec=env SOME_VAR=1 /usr/bin/env-wrapped-binary-that-does-not-exist
         """, _LOOKUP_SCRIPT % "wrapped-test.desktop")
-    assert sigs is not None
-    for generic in ("env", "sh", "bash"):
-        assert generic not in sigs
+    assert sigs is None or all(g not in sigs for g in ("env", "sh", "bash", "/usr/bin/env"))
+
+
+def test_bash_dash_c_wrapper_produces_no_signature_at_all(tmp_path):
+    # A real bug: Exec="bash -c '...'" (a common pattern for small launcher
+    # scripts) used to resolve the *absolute path* of /usr/bin/bash as a
+    # signature even though the bare basename "bash" was correctly excluded
+    # -- meaning blocking this one app would SIGTERM every bash process the
+    # user runs. Correct behavior is no signature at all (same as an
+    # AppImage with an unstable path): can't be blocked, rather than
+    # blocking everything.
+    bash_path = shutil.which("bash")
+    sigs = _run(tmp_path, "bash-wrapper-test.desktop", """\
+        [Desktop Entry]
+        Type=Application
+        Name=Bash Wrapper Test
+        Exec=bash -c "cd /tmp && echo hi"
+        """, _LOOKUP_SCRIPT % "bash-wrapper-test.desktop")
+    assert sigs is None or (bash_path not in (sigs or []) and "bash" not in (sigs or []))
 
 
 def test_flatpak_exec_extracts_app_id_not_the_run_subcommand(tmp_path):
