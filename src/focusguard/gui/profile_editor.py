@@ -27,7 +27,7 @@ class ProfileEditorWindow(Adw.Window):
         on_save: Callable[[Profile], None],
         on_delete: Optional[Callable[[str], None]] = None,
     ):
-        super().__init__(transient_for=parent, modal=True, default_width=440, default_height=520)
+        super().__init__(transient_for=parent, modal=True, default_width=540, default_height=620)
         self._on_save = on_save
         self._on_delete = on_delete
         self._original_name = profile.name if profile else None
@@ -144,9 +144,12 @@ class ProfileEditorWindow(Adw.Window):
             danger_group.add(delete_btn)
             page.add(danger_group)
 
-        scroller = Gtk.ScrolledWindow(vexpand=True)
-        scroller.set_child(page)
-        toolbar_view.set_content(scroller)
+        # Adw.PreferencesPage already scrolls (and clamps its own width)
+        # internally -- wrapping it in another Gtk.ScrolledWindow nested two
+        # scrollers that fought each other, and the outer one didn't know
+        # the page's intended width, so it let content overflow sideways
+        # into a horizontal scrollbar instead of wrapping to fit.
+        toolbar_view.set_content(page)
         self.set_content(toolbar_view)
 
     def _time_row(self, title: str, hour: int, minute: int):
