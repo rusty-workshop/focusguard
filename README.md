@@ -42,6 +42,7 @@ happens to have a small blinking shield friend doing the telling.
 - [Architecture](#architecture)
 - [How enforcement actually works](#how-enforcement-actually-works)
 - [Known limitations](#known-limitations)
+- [Website blocking](#website-blocking)
 - [Installing](#installing-arch-linux)
 - [Uninstalling](#uninstalling)
 - [Configuration](#configuration)
@@ -101,6 +102,10 @@ bank and [`docs/vigi.svg`](docs/vigi.svg) for the animated source art.
 - 🖥️ **Native GTK4 + libadwaita GUI** — not a web page in a window
 - 🔍 **Real app discovery** via `Gio.DesktopAppInfo`, with icons, search,
   Select All / Clear All
+- 🌐 **Website blocking, in every browser** — per-profile domain list
+  (`reddit.com`, `youtube.com`, …), enforced at the `/etc/hosts` level so it
+  works in Vivaldi, Firefox, Chrome, or anything else, with no per-browser
+  extension to install
 - 📅 **Schedules** — days of week, start/end time, correctly handles
   windows that cross midnight (bedtime profiles)
 - ⚡ **Manual sessions** — "start School now for 45 minutes" from the GUI
@@ -114,8 +119,10 @@ bank and [`docs/vigi.svg`](docs/vigi.svg) for the animated source art.
   gracefully without `libnotify`)
 - ⌨️ **Hyprland keybind ready** via a scriptable CLI — you choose the key,
   FocusGuard never touches your Hyprland config
-- 🔒 **No root, ever** — runs entirely as your user, with a locked-down
-  Unix socket and a fixed list of processes that can never be killed
+- 🔒 **Almost no root** — app blocking runs entirely as your user; the
+  *only* privileged piece is one small, narrowly-scoped script that
+  maintains FocusGuard's block of `/etc/hosts` for website blocking (see
+  [Website blocking](#website-blocking))
 
 ## Why not an existing tool?
 
@@ -198,6 +205,54 @@ processes can never be signaled.
   processes, but they all share the same real executable, so matching one
   signature correctly catches all of them — this one isn't actually a
   limitation, just worth knowing.
+
+## Website blocking
+
+Blocked apps and blocked websites are both per-profile, and both enforced
+by the same daemon, but the *mechanism* is different: apps are stopped by
+killing processes, websites can't be — there's no process to kill until
+after DNS has already resolved. So website blocking works one level down,
+at the OS's own hostname resolution:
+
+1. Each profile has its own `blocked_domains` list (e.g. `reddit.com`),
+   editable from the profile editor right next to the app picker.
+2. Whenever the currently-active domain set changes, the daemon hands it to
+   a tiny, dedicated root-run script
+   ([`packaging/focusguard-hosts-helper`](packaging/focusguard-hosts-helper))
+   via `sudo -n` (never interactive — if sudo would prompt for a password,
+   it fails fast instead of hanging).
+3. That script re-validates every domain against a strict allow-pattern
+   (rejecting anything that isn't a plausible hostname) and rewrites *only*
+   the block of `/etc/hosts` between two `# FocusGuard managed block`
+   markers, redirecting the domain and its `www.` variant to `0.0.0.0`
+   (instant connection refused, not a hang). Everything else in the file —
+   your own entries, other tools' entries — is left alone.
+
+Because this happens at the hosts-file level, it blocks the domain for
+**every browser and every app on the system** the moment it resolves the
+name — Vivaldi, Firefox, a Chromium build, `curl`, all of them — with no
+per-browser extension to install or keep updated. The block is torn down
+automatically the moment a profile becomes inactive, and it's cleared
+entirely when the daemon stops.
+
+### One-time setup: passwordless sudo for the helper
+
+This is the one place FocusGuard needs anything beyond your own user
+account. The PKGBUILD installs a sudoers drop-in
+([`packaging/focusguard-sudoers`](packaging/focusguard-sudoers)) granting
+**only** members of the `wheel` group passwordless `sudo` to run **only**
+that one script at its exact installed path — nothing else is granted, and
+the script itself re-validates its input as if it were untrusted, since
+(via sudo) it effectively is. If you're not in `wheel`, either add yourself
+(`sudo usermod -aG wheel $USER`, then log out/in) or edit the drop-in to
+name your user directly — the file has a comment showing the one-line
+change.
+
+`focusguardctl doctor` checks that this is set up correctly and tells you
+exactly what's missing if not. Website blocking degrades gracefully if it
+isn't: app blocking keeps working, and the daemon logs (and shows one
+desktop notification for) the failure rather than retrying silently
+forever.
 
 ## Installing (Arch Linux)
 
@@ -282,6 +337,11 @@ automatically — remove them yourself for a clean slate:
 rm -rf ~/.config/focusguard
 ```
 
+Stopping the daemon (`systemctl --user disable --now focusguard.service`)
+already clears any active website block from `/etc/hosts` automatically. To
+fully remove the sudo rule that enabled it: `sudo rm /etc/sudoers.d/focusguard`
+(the PKGBUILD does this for you on `pacman -R`).
+
 ## Configuration
 
 Config lives at `~/.config/focusguard/config.json` (human-readable JSON,
@@ -294,6 +354,7 @@ edit it through the GUI, but the format is simple enough to hand-edit:
     "School": {
       "name": "School",
       "blocked_apps": ["discord.desktop", "steam.desktop", "spotify.desktop", "vivaldi-stable.desktop"],
+      "blocked_domains": ["reddit.com", "youtube.com"],
       "schedule": { "enabled": true, "days": [0, 1, 2, 3, 4], "start": "08:00", "end": "15:00" },
       "manual_duration_minutes": 45
     }
@@ -309,6 +370,7 @@ edit it through the GUI, but the format is simple enough to hand-edit:
 | Field | Meaning |
 |---|---|
 | `blocked_apps` | `.desktop` file IDs (as shown by the picker) — the same ID `gio launch <id>` or `gtk-launch <id>` would use |
+| `blocked_domains` | Bare domains (no `https://`, no path) — see [Website blocking](#website-blocking). `www.<domain>` is always redirected too, no need to list it separately |
 | `schedule.days` | `0`=Monday … `6`=Sunday |
 | `schedule.start` / `end` | `HH:MM`, 24h. A window that crosses midnight (e.g. `22:00` → `06:00` for a "Bedtime" profile) works correctly |
 | `manual_duration_minutes` | How long a *manual* ("start now") activation of that profile lasts; doesn't affect the scheduled window |
@@ -449,6 +511,15 @@ detail.
   matter what you configure.
 - `config.json` and `state.json` are written atomically (temp file +
   `rename`) and created with `0600` permissions.
+- The one privileged operation, website blocking, is scoped as tightly as
+  sudo allows: the drop-in grants `NOPASSWD` for one exact script path only
+  (`/usr/lib/focusguard/hosts-helper`), never a wildcard and never `ALL`.
+  That script re-validates every domain against a strict hostname pattern
+  before touching disk, only ever rewrites the block of `/etc/hosts`
+  between its own markers, refuses to proceed if it finds the markers in an
+  inconsistent state (rather than guessing), and writes atomically (temp
+  file + `rename`). `sudo -n` means a missing/misconfigured rule fails
+  immediately instead of hanging the daemon on a password prompt.
 
 ## Development / tests
 

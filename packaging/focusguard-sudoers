@@ -1,0 +1,9 @@
+# Allows members of the `wheel` group to run FocusGuard's hosts helper
+# without a password, and nothing else. The helper itself re-validates every
+# domain it's given and only ever touches the block of /etc/hosts between
+# FocusGuard's own markers -- see packaging/focusguard-hosts-helper.
+#
+# Installed to /etc/sudoers.d/focusguard (mode 0440) by the PKGBUILD.
+# If your user isn't in `wheel`, replace `%wheel` below with your username,
+# e.g. `rusty ALL=(root) NOPASSWD: /usr/lib/focusguard/hosts-helper`.
+%wheel ALL=(root) NOPASSWD: /usr/lib/focusguard/hosts-helper

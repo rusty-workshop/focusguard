@@ -24,6 +24,7 @@ from ..common.appinfo import lookup_app
 from ..common.config import Config, ConfigError, load_config
 from . import scheduler
 from .enforcer import Enforcer
+from .hosts_apply import apply_domain_block
 from .notifier import notify
 from .state import ManualBlock, RuntimeState
 
@@ -51,6 +52,8 @@ class Daemon:
         self.enforcer = Enforcer(self.cfg.settings.grace_period_seconds)
         self._my_uid = os.getuid()
         self._prev_blocked_ids: set[str] = set()
+        self._prev_blocked_domains: set[str] = set()
+        self._hosts_block_ok = True  # last apply_domain_block() result, for once-only failure notices
         self._server: Optional[asyncio.base_events.Server] = None
         self._last_nudge: dict[str, float] = {}
 
@@ -88,6 +91,7 @@ class Daemon:
         self._prev_blocked_ids = set(status.blocked_desktop_ids)
         if status.blocked_desktop_ids:
             log.info("startup: %d app(s) already due to be blocked", len(status.blocked_desktop_ids))
+        self._apply_website_block(status.blocked_domains)
 
         try:
             while True:
@@ -98,6 +102,12 @@ class Daemon:
             await self._server.wait_closed()
             if sock_path.exists():
                 sock_path.unlink()
+            # Clear the hosts block on shutdown -- websites should only stay
+            # blocked while the daemon is actually running to reconcile them
+            # (matches how app-blocking naturally stops with the daemon).
+            # Startup re-applies whatever should be active, so a quick
+            # restart just means a brief window where sites are reachable.
+            self._apply_website_block([])
 
     async def _tick(self) -> None:
         self._maybe_reload_config()
@@ -117,6 +127,7 @@ class Daemon:
 
         events = self.enforcer.tick(status.blocked_desktop_ids)
         self._handle_enforcement_events(events, now)
+        self._apply_website_block(status.blocked_domains)
 
     def _enforce_now(self) -> None:
         """Run an immediate out-of-band enforcement pass (used right after a
@@ -125,6 +136,33 @@ class Daemon:
         events = self.enforcer.tick(status.blocked_desktop_ids)
         self._handle_enforcement_events(events, time.time())
         self._prev_blocked_ids = set(status.blocked_desktop_ids)
+        self._apply_website_block(status.blocked_domains)
+
+    def _apply_website_block(self, blocked_domains) -> None:
+        """Push the currently-active domain set into /etc/hosts via the
+        privileged helper, but only when the set actually changed -- this
+        runs every poll tick, and shelling out to sudo each time would be
+        wasteful and would spam a failure notice if the sudoers rule isn't
+        set up. Failure is logged and surfaced once (not every tick) via
+        notify(); app-blocking keeps working regardless."""
+        new_domains = set(blocked_domains)
+        if new_domains == self._prev_blocked_domains:
+            return
+        ok, detail = apply_domain_block(new_domains)
+        if ok:
+            self._prev_blocked_domains = new_domains
+            self._hosts_block_ok = True
+            return
+        log.error("failed to apply website block: %s", detail)
+        if self._hosts_block_ok and self.cfg.settings.notifications_enabled:
+            notify(
+                "FocusGuard: website blocking unavailable",
+                f"{detail} -- app blocking is unaffected",
+            )
+        self._hosts_block_ok = False
+        # Don't update _prev_blocked_domains: keep retrying next tick, and
+        # keep reporting the pre-failure set in status so the GUI/CLI aren't
+        # silently wrong about what's actually blocked.
 
     def _handle_enforcement_events(self, events, now: float) -> None:
         """Vigi's nudge: a friendly notification the moment a blocked app is
@@ -210,6 +248,8 @@ class Daemon:
             "paused": status.paused,
             "paused_until": status.paused_until,
             "blocked_apps": status.blocked_desktop_ids,
+            "blocked_domains": status.blocked_domains,
+            "website_blocking_ok": self._hosts_block_ok,
             "profiles": profiles,
         }
 
@@ -224,7 +264,10 @@ class Daemon:
         self.state.manual_blocks.append(ManualBlock(profile=name, started_at=now, ends_at=ends_at))
         self.state.save()
         if self.cfg.settings.notifications_enabled:
-            notify(f"FocusGuard: {name} started", f"Blocking {len(profile.blocked_apps)} app(s)")
+            body = f"Blocking {len(profile.blocked_apps)} app(s)"
+            if profile.blocked_domains:
+                body += f" and {len(profile.blocked_domains)} website(s)"
+            notify(f"FocusGuard: {name} started", body)
         self._enforce_now()
         return self._cmd_status(request)
 

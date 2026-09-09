@@ -80,6 +80,24 @@ def test_manual_block_active_outside_schedule():
     assert status.blocked_desktop_ids == ["spotify.desktop"]
 
 
+def test_blocked_domains_follow_the_same_active_set_as_apps():
+    cfg = Config()
+    cfg.profiles["Study"] = Profile(
+        name="Study", blocked_apps=["spotify.desktop"], blocked_domains=["reddit.com"]
+    )
+    now = _dt(0, 12, 0).timestamp()
+    state = RuntimeState(manual_blocks=[ManualBlock(profile="Study", started_at=now, ends_at=now + 60)])
+    status = scheduler.compute_status(cfg, state, now=now)
+    assert status.blocked_domains == ["reddit.com"]
+
+    paused_state = RuntimeState(
+        manual_blocks=[ManualBlock(profile="Study", started_at=now, ends_at=now + 60)],
+        paused_until=now + 30,
+    )
+    paused_status = scheduler.compute_status(cfg, paused_state, now=now)
+    assert paused_status.blocked_domains == []
+
+
 def test_pause_suppresses_all_enforcement_but_keeps_state():
     cfg = Config()
     cfg.profiles["Study"] = Profile(name="Study", blocked_apps=["spotify.desktop"])

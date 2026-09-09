@@ -33,12 +33,18 @@ def _print_status(data: dict, as_json: bool) -> None:
     if as_json:
         print(json.dumps(data))
         return
+    domains = data.get("blocked_domains", [])
     if data.get("paused"):
         print("PAUSED (resumes automatically)")
-    elif not data.get("blocked_apps"):
+    elif not data.get("blocked_apps") and not domains:
         print("INACTIVE (nothing currently blocked)")
     else:
-        print(f"ACTIVE - blocking {len(data['blocked_apps'])} app(s)")
+        line = f"ACTIVE - blocking {len(data['blocked_apps'])} app(s)"
+        if domains:
+            line += f", {len(domains)} website(s)"
+        print(line)
+        if not data.get("website_blocking_ok", True):
+            print("  warning: website blocking is unavailable -- run `focusguardctl doctor`", file=sys.stderr)
     for p in data.get("profiles", []):
         print(f"  {p['name']:<20} {p['state']}")
 
@@ -97,6 +103,36 @@ def _run_doctor_checks() -> list[tuple[str, bool, str]]:
 
     vigi_path = mascot.asset_path()
     checks.append(("Vigi's portrait asset is installed", vigi_path is not None, str(vigi_path or "")))
+
+    from .daemon.hosts_apply import _helper_path
+    helper = _helper_path()
+    checks.append((
+        "website-blocking helper is installed",
+        helper is not None,
+        str(helper) if helper else "expected /usr/lib/focusguard/hosts-helper (see PKGBUILD)",
+    ))
+    if helper is not None:
+        sudo_ok, sudo_detail = False, "sudo not found"
+        if shutil.which("sudo"):
+            try:
+                # A nonexistent path is deliberate: we only care whether sudo
+                # itself lets the call through (its own refusal is prefixed
+                # "sudo:") -- the helper then failing to open the path proves
+                # it actually ran, which is all this check needs.
+                result = subprocess.run(
+                    ["sudo", "-n", str(helper), "/nonexistent-focusguard-doctor-probe"],
+                    capture_output=True, text=True, timeout=3, check=False,
+                )
+                stderr = (result.stderr or "").strip()
+                sudo_ok = not stderr.startswith("sudo:")
+                sudo_detail = "" if sudo_ok else stderr
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                sudo_detail = str(exc)
+        checks.append((
+            "passwordless sudo for website blocking is set up",
+            sudo_ok,
+            sudo_detail or "see packaging/focusguard-sudoers",
+        ))
 
     return checks
 

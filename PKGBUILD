@@ -39,4 +39,7 @@ package() {
     "$pkgdir/usr/share/zsh/site-functions/_focusguardctl"
   install -Dm644 packaging/completions/focusguardctl.fish \
     "$pkgdir/usr/share/fish/vendor_completions.d/focusguardctl.fish"
+
+  install -Dm755 packaging/focusguard-hosts-helper "$pkgdir/usr/lib/focusguard/hosts-helper"
+  install -Dm440 packaging/focusguard-sudoers "$pkgdir/etc/sudoers.d/focusguard"
 }

@@ -18,6 +18,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, List
 
 from . import paths
+from .domains import InvalidDomainError, validate_domain
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class Schedule:
 class Profile:
     name: str
     blocked_apps: List[str] = field(default_factory=list)
+    blocked_domains: List[str] = field(default_factory=list)
     schedule: Schedule = field(default_factory=Schedule)
     manual_duration_minutes: int = 45
 
@@ -67,6 +69,15 @@ class Profile:
             raise ConfigError(f"profile {self.name!r}: blocked_apps must be a list of strings")
         if len(set(self.blocked_apps)) != len(self.blocked_apps):
             raise ConfigError(f"profile {self.name!r}: blocked_apps has duplicates")
+        if not isinstance(self.blocked_domains, list):
+            raise ConfigError(f"profile {self.name!r}: blocked_domains must be a list of strings")
+        try:
+            for domain in self.blocked_domains:
+                validate_domain(domain)
+        except InvalidDomainError as exc:
+            raise ConfigError(f"profile {self.name!r}: {exc}") from exc
+        if len(set(self.blocked_domains)) != len(self.blocked_domains):
+            raise ConfigError(f"profile {self.name!r}: blocked_domains has duplicates")
         if not isinstance(self.manual_duration_minutes, int) or not (
             1 <= self.manual_duration_minutes <= 24 * 60
         ):
@@ -109,6 +120,7 @@ class Config:
                 name: {
                     "name": p.name,
                     "blocked_apps": list(p.blocked_apps),
+                    "blocked_domains": list(p.blocked_domains),
                     "schedule": asdict(p.schedule),
                     "manual_duration_minutes": p.manual_duration_minutes,
                 }
@@ -136,6 +148,7 @@ class Config:
                 profile = Profile(
                     name=raw.get("name", name),
                     blocked_apps=raw.get("blocked_apps", []),
+                    blocked_domains=raw.get("blocked_domains", []),
                     schedule=schedule,
                     manual_duration_minutes=raw.get("manual_duration_minutes", 45),
                 )

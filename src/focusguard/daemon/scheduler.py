@@ -78,6 +78,7 @@ class DaemonStatus:
     paused_until: Optional[float]
     profiles: List[ProfileStatus]
     blocked_desktop_ids: List[str]
+    blocked_domains: List[str]
 
 
 def compute_status(cfg: Config, state: RuntimeState, now: Optional[float] = None) -> DaemonStatus:
@@ -90,6 +91,7 @@ def compute_status(cfg: Config, state: RuntimeState, now: Optional[float] = None
 
     statuses: List[ProfileStatus] = []
     blocked_ids: set[str] = set()
+    blocked_domains: set[str] = set()
     for name, profile in cfg.profiles.items():
         scheduled = schedule_matches(profile.schedule, dt)
         suppressed_until = state.schedule_suppressed.get(name)
@@ -108,6 +110,7 @@ def compute_status(cfg: Config, state: RuntimeState, now: Optional[float] = None
         )
         if not paused and (scheduled or manual_active):
             blocked_ids.update(profile.blocked_apps)
+            blocked_domains.update(profile.blocked_domains)
 
     return DaemonStatus(
         now=now,
@@ -115,4 +118,5 @@ def compute_status(cfg: Config, state: RuntimeState, now: Optional[float] = None
         paused_until=state.paused_until,
         profiles=statuses,
         blocked_desktop_ids=sorted(blocked_ids),
+        blocked_domains=sorted(blocked_domains),
     )

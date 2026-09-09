@@ -334,6 +334,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._last_status = response
         blocked = response.get("blocked_apps", [])
+        blocked_domains = response.get("blocked_domains", [])
         paused = response.get("paused", False)
 
         if paused:
@@ -343,15 +344,24 @@ class MainWindow(Adw.ApplicationWindow):
             self._status_title.set_text("PAUSED")
             self._status_detail.set_text(f"Enforcement paused until {when}")
             state_key = "PAUSED"
-        elif blocked:
+        elif blocked or blocked_domains:
             self._status_dot.set_markup('<span color="#e01b24">●</span>')
-            self._status_title.set_text(f"ACTIVE — blocking {len(blocked)} app(s)")
+            title = f"ACTIVE — blocking {len(blocked)} app(s)"
+            if blocked_domains:
+                title += f", {len(blocked_domains)} website(s)"
+            self._status_title.set_text(title)
             names = []
             for app_id in blocked[:6]:
                 entry = lookup_app(app_id)
                 names.append(entry.name if entry else app_id)
-            more = f" +{len(blocked) - 6} more" if len(blocked) > 6 else ""
+            names.extend(blocked_domains[: max(0, 6 - len(names))])
+            more_count = max(0, len(blocked) + len(blocked_domains) - 6)
+            more = f" +{more_count} more" if more_count else ""
             self._status_detail.set_text(", ".join(names) + more)
+            if not response.get("website_blocking_ok", True):
+                self._status_detail.set_text(
+                    self._status_detail.get_text() + "  (⚠ website blocking unavailable — see doctor)"
+                )
             state_key = "ACTIVE"
         else:
             self._status_dot.set_markup('<span color="#2ec27e">●</span>')
@@ -370,7 +380,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._pause_btn.set_sensitive(not paused)
         self._resume_btn.set_sensitive(paused)
-        self._stop_btn.set_sensitive(bool(blocked) and not paused)
+        self._stop_btn.set_sensitive(bool(blocked or blocked_domains) and not paused)
 
         self._rebuild_profile_rows()
         return False  # one-shot idle callback
@@ -400,7 +410,11 @@ class MainWindow(Adw.ApplicationWindow):
         for name, profile in self._cfg.profiles.items():
             row = Adw.ActionRow(title=name)
             state = status_by_name.get(name, {}).get("state", "INACTIVE")
-            row.set_subtitle(f"{state} · {len(profile.blocked_apps)} app(s) blocked")
+            subtitle = f"{state} · {len(profile.blocked_apps)} app(s)"
+            if profile.blocked_domains:
+                subtitle += f", {len(profile.blocked_domains)} website(s)"
+            subtitle += " blocked"
+            row.set_subtitle(subtitle)
 
             start_btn = Gtk.Button(label="Stop" if state == "ACTIVE" else "Start now")
             start_btn.connect("clicked", self._on_start_stop_profile, name, state == "ACTIVE")

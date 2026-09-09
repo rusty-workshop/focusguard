@@ -67,6 +67,34 @@ def test_duplicate_blocked_apps_rejected():
         )
 
 
+def test_blocked_domains_round_trip(tmp_path):
+    path = tmp_path / "config.json"
+    cfg = Config()
+    cfg.profiles["School"] = Profile(name="School", blocked_domains=["reddit.com", "youtube.com"])
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.profiles["School"].blocked_domains == ["reddit.com", "youtube.com"]
+
+
+def test_invalid_blocked_domain_rejected():
+    with pytest.raises(ConfigError):
+        Config.from_dict(
+            {"profiles": {"Bad": {"name": "Bad", "blocked_domains": ["not a domain"]}}}
+        )
+
+
+def test_duplicate_blocked_domains_rejected():
+    with pytest.raises(ConfigError):
+        Config.from_dict(
+            {"profiles": {"Dup": {"name": "Dup", "blocked_domains": ["a.com", "a.com"]}}}
+        )
+
+
+def test_config_without_blocked_domains_key_defaults_to_empty():
+    cfg = Config.from_dict({"profiles": {"Old": {"name": "Old", "blocked_apps": []}}})
+    assert cfg.profiles["Old"].blocked_domains == []
+
+
 def test_profile_key_name_mismatch_rejected():
     with pytest.raises(ConfigError):
         Config.from_dict({"profiles": {"KeyA": {"name": "OtherName"}}})

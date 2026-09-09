@@ -12,6 +12,7 @@ from gi.repository import Gtk, Adw  # noqa: E402
 
 from ..common.config import Profile, Schedule
 from ..common.appinfo import lookup_app
+from ..common.domains import InvalidDomainError, normalize_domain
 from .picker import AppPickerWindow
 
 _DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -30,6 +31,7 @@ class ProfileEditorWindow(Adw.Window):
         self._on_delete = on_delete
         self._original_name = profile.name if profile else None
         self._blocked_apps = list(profile.blocked_apps) if profile else []
+        self._blocked_domains = list(profile.blocked_domains) if profile else []
 
         self.set_title("Edit profile" if profile else "New profile")
 
@@ -61,6 +63,24 @@ class ProfileEditorWindow(Adw.Window):
         self._update_apps_row()
         apps_group.add(self._apps_row)
         page.add(apps_group)
+
+        sites_group = Adw.PreferencesGroup(
+            title="Blocked websites",
+            description="Redirected in /etc/hosts, so this works in every browser",
+        )
+        self._add_site_row = Adw.EntryRow(title="Add a website (e.g. reddit.com)")
+        self._add_site_row.connect("entry-activated", self._on_add_domain)
+        add_site_btn = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER)
+        add_site_btn.add_css_class("flat")
+        add_site_btn.connect("clicked", self._on_add_domain)
+        self._add_site_row.add_suffix(add_site_btn)
+        sites_group.add(self._add_site_row)
+
+        self._sites_list_group = Adw.PreferencesGroup()
+        page.add(sites_group)
+        page.add(self._sites_list_group)
+        self._domain_rows: dict[str, Adw.ActionRow] = {}
+        self._rebuild_domain_rows()
 
         schedule_group = Adw.PreferencesGroup(
             title="Schedule", description="Automatically block during these times"
@@ -140,6 +160,40 @@ class ProfileEditorWindow(Adw.Window):
             more = f" +{n - 3} more" if n > 3 else ""
             self._apps_row.set_subtitle(", ".join(names) + more)
 
+    def _rebuild_domain_rows(self) -> None:
+        for row in list(self._domain_rows.values()):
+            self._sites_list_group.remove(row)
+        self._domain_rows = {}
+        for domain in self._blocked_domains:
+            row = Adw.ActionRow(title=domain)
+            remove_btn = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
+            remove_btn.add_css_class("flat")
+            remove_btn.connect("clicked", self._on_remove_domain, domain)
+            row.add_suffix(remove_btn)
+            self._sites_list_group.add(row)
+            self._domain_rows[domain] = row
+
+    def _on_add_domain(self, *_args) -> None:
+        raw = self._add_site_row.get_text().strip()
+        self._add_site_row.remove_css_class("error")
+        if not raw:
+            return
+        try:
+            domain = normalize_domain(raw)
+        except InvalidDomainError:
+            self._add_site_row.add_css_class("error")
+            return
+        self._add_site_row.set_text("")
+        if domain in self._blocked_domains:
+            return
+        self._blocked_domains.append(domain)
+        self._blocked_domains.sort()
+        self._rebuild_domain_rows()
+
+    def _on_remove_domain(self, _btn, domain: str) -> None:
+        self._blocked_domains.remove(domain)
+        self._rebuild_domain_rows()
+
     def _open_picker(self, *_args) -> None:
         def done(selected_ids):
             self._blocked_apps = selected_ids
@@ -168,6 +222,7 @@ class ProfileEditorWindow(Adw.Window):
         profile = Profile(
             name=name,
             blocked_apps=list(self._blocked_apps),
+            blocked_domains=list(self._blocked_domains),
             schedule=schedule,
             manual_duration_minutes=int(self._duration_row.get_value()),
         )
