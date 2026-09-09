@@ -117,27 +117,26 @@ class ProfileEditorWindow(Adw.Window):
         schedule_group.add(self._end_row)
         page.add(schedule_group)
 
-        manual_group = Adw.PreferencesGroup(
-            title="Manual duration", description='Used when you start this profile from the app or CLI ("start now")'
+        behavior_group = Adw.PreferencesGroup(
+            title="Behavior", description="How this profile acts when you start or try to leave it early"
         )
         self._duration_row = Adw.SpinRow.new_with_range(1, 24 * 60, 1)
-        self._duration_row.set_title("Minutes")
+        self._duration_row.set_title("Manual duration (minutes)")
+        self._duration_row.set_subtitle('Used when you start this profile from the app or CLI ("start now")')
         self._duration_row.set_value(profile.manual_duration_minutes if profile else 45)
-        manual_group.add(self._duration_row)
-        page.add(manual_group)
+        behavior_group.add(self._duration_row)
 
-        commitment_group = Adw.PreferencesGroup(
-            title="Commitment mode",
-            description="Stop/Pause require confirming again after a delay -- makes bailing early take real intent, not just a click. 0 = off",
-        )
         self._commitment_row = Adw.SpinRow.new_with_range(0, 3600, 5)
-        self._commitment_row.set_title("Confirmation delay (seconds)")
+        self._commitment_row.set_title("Commitment delay (seconds)")
+        self._commitment_row.set_subtitle(
+            "Stop/Pause require confirming again after this delay -- makes bailing early take real intent. 0 = off"
+        )
         self._commitment_row.set_value(profile.commitment_seconds if profile else 0)
-        commitment_group.add(self._commitment_row)
-        page.add(commitment_group)
+        behavior_group.add(self._commitment_row)
+        page.add(behavior_group)
 
         if profile and on_delete:
-            danger_group = Adw.PreferencesGroup()
+            danger_group = Adw.PreferencesGroup(title="Danger zone")
             delete_btn = Gtk.Button(label="Delete profile")
             delete_btn.add_css_class("destructive-action")
             delete_btn.set_halign(Gtk.Align.START)
@@ -255,9 +254,27 @@ class ProfileEditorWindow(Adw.Window):
         picker.present()
 
     def _on_delete_clicked(self, *_args) -> None:
-        self.close()
-        if self._on_delete and self._original_name:
-            self._on_delete(self._original_name)
+        if not (self._on_delete and self._original_name):
+            return
+        name = self._original_name
+        dialog = Adw.MessageDialog(
+            transient_for=self,
+            heading=f"Delete “{name}”?",
+            body="This removes the profile and its schedule permanently. This can't be undone.",
+        )
+        dialog.add_response("cancel", "Cancel")
+        dialog.add_response("delete", "Delete")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def on_response(_dialog, response: str) -> None:
+            if response == "delete":
+                self.close()
+                self._on_delete(name)
+
+        dialog.connect("response", on_response)
+        dialog.present()
 
     def _on_save_clicked(self, *_args) -> None:
         name = self._name_row.get_text().strip()

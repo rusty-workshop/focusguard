@@ -117,7 +117,13 @@ class MainWindow(Adw.ApplicationWindow):
         toolbar_view = Adw.ToolbarView()
         toolbar_view.add_top_bar(header)
 
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16, margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
+        # Standard HIG affordance for a dismissible, non-modal warning --
+        # replaces the old approach of appending "(website blocking
+        # unavailable)" text onto the status detail label.
+        self._banner = Adw.Banner(title="Website blocking is unavailable — see focusguardctl doctor")
+        toolbar_view.add_top_bar(self._banner)
+
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20, margin_top=16, margin_bottom=16, margin_start=16, margin_end=16)
 
         # --- status card -----------------------------------------------
         status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -174,10 +180,15 @@ class MainWindow(Adw.ApplicationWindow):
 
         title_col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, hexpand=True)
         title_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        self._status_dot = Gtk.Label(label="●")
+        # A symbolic icon tinted via the theme's own success/warning/error
+        # CSS classes rather than hardcoded hex -- adapts correctly to
+        # light/dark and any Adwaita accent-color variant, unlike a
+        # literal color string baked into markup.
+        self._status_icon = Gtk.Image.new_from_icon_name("content-loading-symbolic")
+        self._status_icon.set_pixel_size(20)
         self._status_title = Gtk.Label(label="Loading...", xalign=0)
         self._status_title.add_css_class("title-2")
-        title_row.append(self._status_dot)
+        title_row.append(self._status_icon)
         title_row.append(self._status_title)
         title_col.append(title_row)
 
@@ -212,19 +223,33 @@ class MainWindow(Adw.ApplicationWindow):
         self._stop_btn.add_css_class("destructive-action")
         self._stop_btn.connect("clicked", self._on_stop)
         self._resume_btn = Gtk.Button(label="Resume now")
+        self._resume_btn.add_css_class("suggested-action")
         self._resume_btn.connect("clicked", self._on_resume)
         action_row.append(self._pause_btn)
         action_row.append(self._stop_btn)
         action_row.append(self._resume_btn)
         inner.append(action_row)
 
-        self._stats_label = Gtk.Label(label="", xalign=0, margin_top=4)
-        self._stats_label.add_css_class("dim-label")
-        self._stats_label.add_css_class("caption")
-        inner.append(self._stats_label)
+        # Shown instead of the (now-hidden) buttons when nothing's active --
+        # an explicit "there's nothing to do here" beats three grayed-out
+        # buttons that all do nothing.
+        self._nothing_active_hint = Gtk.Label(
+            label="Nothing to pause or stop right now — start a profile below.",
+            xalign=0, wrap=True, margin_top=8,
+        )
+        self._nothing_active_hint.add_css_class("dim-label")
+        self._nothing_active_hint.add_css_class("caption")
+        inner.append(self._nothing_active_hint)
 
         status_box.append(inner)
         root.append(status_box)
+
+        # --- focus stats ---------------------------------------------------
+        stats_group = Adw.PreferencesGroup()
+        self._stats_row = Adw.ActionRow(title="Focus time", subtitle="No time logged yet")
+        self._stats_row.add_prefix(Gtk.Image.new_from_icon_name("hourglass-symbolic"))
+        stats_group.add(self._stats_row)
+        root.append(stats_group)
 
         # --- profiles list ------------------------------------------------
         profiles_label = Gtk.Label(label="Profiles", xalign=0)
@@ -234,10 +259,25 @@ class MainWindow(Adw.ApplicationWindow):
         self._profiles_group = Adw.PreferencesGroup()
         root.append(self._profiles_group)
 
+        self._profiles_empty_state = Adw.StatusPage(
+            icon_name="preferences-system-symbolic",
+            title="No profiles yet",
+            description='Create one to start blocking apps or websites — try "School" or "Deep Work".',
+        )
+        self._profiles_empty_state.set_vexpand(False)
+        create_btn = Gtk.Button(label="Create a profile", halign=Gtk.Align.CENTER)
+        create_btn.add_css_class("suggested-action")
+        create_btn.add_css_class("pill")
+        create_btn.connect("clicked", self._on_add_profile)
+        self._profiles_empty_state.set_child(create_btn)
+        root.append(self._profiles_empty_state)
+
+        self._toasts = Adw.ToastOverlay()
         scroller = Gtk.ScrolledWindow(vexpand=True)
         scroller.set_child(root)
         toolbar_view.set_content(scroller)
-        self.set_content(toolbar_view)
+        self._toasts.set_child(toolbar_view)
+        self.set_content(self._toasts)
 
         self._last_status: dict | None = None
         self._last_vigi_state_key: str | None = None
@@ -274,6 +314,23 @@ class MainWindow(Adw.ApplicationWindow):
         )
         dialog.add_response("ok", "OK")
         dialog.present()
+
+    def _show_toast(self, message: str) -> None:
+        self._toasts.add_toast(Adw.Toast(title=message, timeout=4))
+
+    _STATUS_ICONS = {
+        "PAUSED": ("media-playback-pause-symbolic", "warning"),
+        "ACTIVE": ("changes-prevent-symbolic", "error"),
+        "INACTIVE": ("changes-allow-symbolic", "success"),
+        None: ("dialog-warning-symbolic", "dim-label"),  # daemon unreachable
+    }
+
+    def _set_status_icon(self, state_key: str | None) -> None:
+        icon_name, css_class = self._STATUS_ICONS[state_key]
+        for _, cls in self._STATUS_ICONS.values():
+            self._status_icon.remove_css_class(cls)
+        self._status_icon.set_from_icon_name(icon_name)
+        self._status_icon.add_css_class(css_class)
 
     # ------------------------------------------------------------- mascot
     def _set_vigi_says(self, message: str) -> None:
@@ -350,11 +407,10 @@ class MainWindow(Adw.ApplicationWindow):
         today_total = sum(response.get("today", {}).values())
         week_total = sum(response.get("this_week", {}).values())
         if today_total <= 0 and week_total <= 0:
-            self._stats_label.set_text("")
+            self._stats_row.set_subtitle("No time logged yet")
         else:
-            self._stats_label.set_text(
-                f"Blocked {_format_duration(today_total)} today · "
-                f"{_format_duration(week_total)} this week"
+            self._stats_row.set_subtitle(
+                f"{_format_duration(today_total)} today · {_format_duration(week_total)} this week"
             )
         return False  # one-shot idle callback
 
@@ -362,28 +418,32 @@ class MainWindow(Adw.ApplicationWindow):
         if error or response is None:
             self._status_title.set_text("Daemon unreachable")
             self._status_detail.set_text(error or "unknown error")
-            self._status_dot.set_markup('<span color="#888888">●</span>')
+            self._set_status_icon(None)
             self._set_vigi_says("I can't reach the daemon — is it running?")
-            self._pause_btn.set_sensitive(False)
-            self._stop_btn.set_sensitive(False)
-            self._resume_btn.set_sensitive(False)
+            self._pause_btn.set_visible(False)
+            self._stop_btn.set_visible(False)
+            self._resume_btn.set_visible(False)
+            self._nothing_active_hint.set_visible(False)
+            self._banner.set_revealed(False)
             return False
 
         self._last_status = response
         blocked = response.get("blocked_apps", [])
         blocked_domains = response.get("blocked_domains", [])
         paused = response.get("paused", False)
+        website_blocking_ok = response.get("website_blocking_ok", True)
+        anything_blocked = bool(blocked or blocked_domains)
+
+        self._banner.set_revealed(not website_blocking_ok and anything_blocked)
 
         if paused:
             until = response.get("paused_until")
             when = datetime.fromtimestamp(until).strftime("%H:%M") if until else "?"
-            self._status_dot.set_markup('<span color="#f5a623">●</span>')
-            self._status_title.set_text("PAUSED")
+            self._status_title.set_text("Paused")
             self._status_detail.set_text(f"Enforcement paused until {when}")
             state_key = "PAUSED"
-        elif blocked or blocked_domains:
-            self._status_dot.set_markup('<span color="#e01b24">●</span>')
-            title = f"ACTIVE — blocking {len(blocked)} app(s)"
+        elif anything_blocked:
+            title = f"Blocking {len(blocked)} app(s)"
             if blocked_domains:
                 title += f", {len(blocked_domains)} website(s)"
             self._status_title.set_text(title)
@@ -395,16 +455,13 @@ class MainWindow(Adw.ApplicationWindow):
             more_count = max(0, len(blocked) + len(blocked_domains) - 6)
             more = f" +{more_count} more" if more_count else ""
             self._status_detail.set_text(", ".join(names) + more)
-            if not response.get("website_blocking_ok", True):
-                self._status_detail.set_text(
-                    self._status_detail.get_text() + "  (⚠ website blocking unavailable — see doctor)"
-                )
             state_key = "ACTIVE"
         else:
-            self._status_dot.set_markup('<span color="#2ec27e">●</span>')
-            self._status_title.set_text("INACTIVE")
+            self._status_title.set_text("Inactive")
             self._status_detail.set_text("Nothing is currently blocked")
             state_key = "INACTIVE"
+
+        self._set_status_icon(state_key)
 
         # Only re-roll Vigi's line when the state actually changes -- this
         # is polled every couple seconds, and re-rolling on every poll would
@@ -416,11 +473,12 @@ class MainWindow(Adw.ApplicationWindow):
             self._set_vigi_says(mascot.status_message(state_key))
 
         now = time.time()
-        self._pause_btn.set_sensitive(not paused and now >= self._pause_gate_until)
-        self._resume_btn.set_sensitive(paused)
-        self._stop_btn.set_sensitive(
-            bool(blocked or blocked_domains) and not paused and now >= self._stop_gate_until
-        )
+        self._pause_btn.set_visible(anything_blocked and not paused)
+        self._pause_btn.set_sensitive(now >= self._pause_gate_until)
+        self._stop_btn.set_visible(anything_blocked and not paused)
+        self._stop_btn.set_sensitive(now >= self._stop_gate_until)
+        self._resume_btn.set_visible(paused)
+        self._nothing_active_hint.set_visible(not anything_blocked and not paused)
 
         self._rebuild_profile_rows()
         return False  # one-shot idle callback
@@ -454,6 +512,7 @@ class MainWindow(Adw.ApplicationWindow):
         original_label = button.get_label()
         self._trigger_vigi_burst("pop")
         self._set_vigi_says(f"Hang on — are you sure? Click that again in {wait_seconds}s to confirm.")
+        self._show_toast(f"Confirm again in {wait_seconds}s to go through with this.")
         self.refresh_status()  # picks up the new gate and disables the button
 
         def tick() -> bool:
@@ -470,11 +529,15 @@ class MainWindow(Adw.ApplicationWindow):
 
     # ------------------------------------------------------------ profiles
     def _rebuild_profile_rows(self) -> None:
-        child = self._profiles_group.get_first_child()
-        # Adw.PreferencesGroup manages its own internal list box; remove via API.
         for row in list(getattr(self, "_profile_rows", [])):
             self._profiles_group.remove(row)
         self._profile_rows = []
+
+        has_profiles = bool(self._cfg.profiles)
+        self._profiles_group.set_visible(has_profiles)
+        self._profiles_empty_state.set_visible(not has_profiles)
+        if not has_profiles:
+            return
 
         status_by_name = {}
         if self._last_status:
@@ -483,36 +546,42 @@ class MainWindow(Adw.ApplicationWindow):
         for name, profile in self._cfg.profiles.items():
             row = Adw.ActionRow(title=name)
             state = status_by_name.get(name, {}).get("state", "INACTIVE")
-            subtitle = f"{state} · {len(profile.blocked_apps)} app(s)"
+            subtitle = f"{state.capitalize()} · {len(profile.blocked_apps)} app(s)"
             if profile.blocked_domains:
                 subtitle += f", {len(profile.blocked_domains)} website(s)"
             subtitle += " blocked"
             row.set_subtitle(subtitle)
 
-            start_btn = Gtk.Button(label="Stop" if state == "ACTIVE" else "Start now")
+            start_btn = Gtk.Button(label="Stop" if state == "ACTIVE" else "Start now", valign=Gtk.Align.CENTER)
             start_btn.connect("clicked", self._on_start_stop_profile, name, state == "ACTIVE")
             row.add_suffix(start_btn)
 
             edit_btn = Gtk.Button(icon_name="document-edit-symbolic", valign=Gtk.Align.CENTER)
+            edit_btn.add_css_class("flat")
+            edit_btn.set_tooltip_text(f"Edit {name}")
             edit_btn.connect("clicked", self._on_edit_profile, name)
             row.add_suffix(edit_btn)
 
             self._profiles_group.add(row)
             self._profile_rows.append(row)
 
-        if not self._cfg.profiles:
-            empty_row = Adw.ActionRow(title="No profiles yet", subtitle="Click + to create one, e.g. “School”")
-            self._profiles_group.add(empty_row)
-            self._profile_rows.append(empty_row)
-
     def _on_start_stop_profile(self, _btn, name: str, currently_active: bool) -> None:
         cmd = "stop" if currently_active else "start"
-        client.call_async({"cmd": cmd, "profile": name}, lambda r, e: self.refresh_status())
+
+        def done(r, e):
+            if r is not None and r.get("confirm_required"):
+                self._show_toast(r.get("error", "Confirmation required."))
+            elif r is not None and r.get("ok"):
+                self._show_toast(f"{name} stopped." if cmd == "stop" else f"{name} started.")
+            self.refresh_status()
+
+        client.call_async({"cmd": cmd, "profile": name}, done)
 
     def _on_add_profile(self, *_args) -> None:
         def on_save(profile: Profile) -> None:
             self._cfg.profiles[profile.name] = profile
             self._save_config()
+            self._show_toast(f"Created “{profile.name}”.")
             self._rebuild_profile_rows()
 
         editor = ProfileEditorWindow(self, None, on_save)
@@ -528,11 +597,13 @@ class MainWindow(Adw.ApplicationWindow):
                 del self._cfg.profiles[name]
             self._cfg.profiles[new_profile.name] = new_profile
             self._save_config()
+            self._show_toast(f"Saved “{new_profile.name}”.")
             self._rebuild_profile_rows()
 
         def on_delete(profile_name: str) -> None:
             self._cfg.profiles.pop(profile_name, None)
             self._save_config()
+            self._show_toast(f"Deleted “{profile_name}”.")
             self._rebuild_profile_rows()
 
         editor = ProfileEditorWindow(self, profile, on_save, on_delete)
