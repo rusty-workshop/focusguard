@@ -227,6 +227,10 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._last_status: dict | None = None
         self._last_vigi_state_key: str | None = None
+        # epoch timestamp until which Pause/Stop is deliberately disabled,
+        # waiting on a commitment_seconds re-confirmation -- see _send_gated.
+        self._pause_gate_until = 0.0
+        self._stop_gate_until = 0.0
         self.refresh_status()
         GLib.timeout_add(STATUS_POLL_INTERVAL_MS, self._on_poll_tick)
         self._rebuild_profile_rows()
@@ -378,22 +382,58 @@ class MainWindow(Adw.ApplicationWindow):
             self._last_vigi_state_key = state_key
             self._set_vigi_says(mascot.status_message(state_key))
 
-        self._pause_btn.set_sensitive(not paused)
+        now = time.time()
+        self._pause_btn.set_sensitive(not paused and now >= self._pause_gate_until)
         self._resume_btn.set_sensitive(paused)
-        self._stop_btn.set_sensitive(bool(blocked or blocked_domains) and not paused)
+        self._stop_btn.set_sensitive(
+            bool(blocked or blocked_domains) and not paused and now >= self._stop_gate_until
+        )
 
         self._rebuild_profile_rows()
         return False  # one-shot idle callback
 
     # ------------------------------------------------------------ actions
     def _on_pause(self, *_args) -> None:
-        client.call_async({"cmd": "pause", "minutes": 5}, lambda r, e: self.refresh_status())
+        self._send_gated({"cmd": "pause", "minutes": 5}, self._pause_btn, "_pause_gate_until")
 
     def _on_resume(self, *_args) -> None:
         client.call_async({"cmd": "resume"}, lambda r, e: self.refresh_status())
 
     def _on_stop(self, *_args) -> None:
-        client.call_async({"cmd": "stop"}, lambda r, e: self.refresh_status())
+        self._send_gated({"cmd": "stop"}, self._stop_btn, "_stop_gate_until")
+
+    def _send_gated(self, request: dict, button: Gtk.Button, gate_attr: str) -> None:
+        """Send a Stop/Pause request that might come back needing a repeat
+        confirmation (Profile.commitment_seconds -- see daemon/server.py's
+        _check_commitment). On a `confirm_required` response, the button is
+        disabled for the wait and the request is NOT retried automatically:
+        the whole point is that clicking again has to be a deliberate,
+        separate action once the countdown actually reaches zero, not
+        something that just happens on its own."""
+        client.call_async(request, lambda r, e: self._on_gated_response(r, e, gate_attr, button))
+
+    def _on_gated_response(self, response, error, gate_attr: str, button: Gtk.Button) -> None:
+        if error or response is None or not response.get("confirm_required"):
+            self.refresh_status()
+            return
+        wait_seconds = max(1, math.ceil(response.get("wait_seconds", 0)))
+        setattr(self, gate_attr, time.time() + wait_seconds)
+        original_label = button.get_label()
+        self._trigger_vigi_burst("pop")
+        self._set_vigi_says(f"Hang on — are you sure? Click that again in {wait_seconds}s to confirm.")
+        self.refresh_status()  # picks up the new gate and disables the button
+
+        def tick() -> bool:
+            remaining = getattr(self, gate_attr) - time.time()
+            if remaining <= 0:
+                button.set_label(original_label)
+                self.refresh_status()  # lifts the gate now that time's up
+                return GLib.SOURCE_REMOVE
+            button.set_label(f"Confirm? ({math.ceil(remaining)}s)")
+            return GLib.SOURCE_CONTINUE
+
+        button.set_label(f"Confirm? ({wait_seconds}s)")
+        GLib.timeout_add_seconds(1, tick)
 
     # ------------------------------------------------------------ profiles
     def _rebuild_profile_rows(self) -> None:

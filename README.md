@@ -42,6 +42,7 @@ happens to have a small blinking shield friend doing the telling.
 - [Architecture](#architecture)
 - [How enforcement actually works](#how-enforcement-actually-works)
 - [Known limitations](#known-limitations)
+- [Commitment mode](#commitment-mode)
 - [Website blocking](#website-blocking)
 - [Installing](#installing-arch-linux)
 - [Uninstalling](#uninstalling)
@@ -115,6 +116,10 @@ bank and [`docs/vigi.svg`](docs/vigi.svg) for the animated source art.
   at once
 - ⏸️ **Explicit, visible override** — Pause 5 min / Stop Mode / Resume,
   never a silent bypass
+- 🫷 **Optional commitment mode** — per-profile, makes Stop/Pause require
+  clicking (or running the command) again after a delay you set, so
+  bailing out early takes real intent instead of one reflexive click. See
+  [Commitment mode](#commitment-mode)
 - 🔔 **Desktop notifications** on block start/end (optional, degrades
   gracefully without `libnotify`)
 - ⌨️ **Hyprland keybind ready** via a scriptable CLI — you choose the key,
@@ -205,6 +210,31 @@ processes can never be signaled.
   processes, but they all share the same real executable, so matching one
   signature correctly catches all of them — this one isn't actually a
   limitation, just worth knowing.
+
+## Commitment mode
+
+The regular Pause/Stop buttons are deliberately one click — that's correct
+for the normal case of "I finished early, let me out." Commitment mode is
+for when you don't trust your future self to make that call in the moment:
+set `commitment_seconds` on a profile (via the profile editor's
+"Commitment mode" section, 0 = off) and Stop/Pause against that profile
+stops working as a single click.
+
+The first Stop/Pause request against a protected profile is refused and
+starts a countdown; the *same* request has to be sent again after that
+many seconds actually elapse to go through. In the GUI, the button just
+disables itself and counts down — click it again once it's done to
+confirm. From the CLI, run the same `focusguardctl stop`/`pause` command
+again after waiting.
+
+This is enforced by the **daemon**, not the GUI, using the same commands
+either client would send — so there's no "just use the CLI instead" or
+"just click faster" escape hatch. `focusguardctl start` is never gated;
+the friction only applies to getting out early, never to starting a block.
+Stopping *everything* at once (`focusguardctl stop` with no profile name,
+or Pause) uses the strictest `commitment_seconds` among whatever profiles
+are currently active, so a protected profile can't be dodged by pausing
+globally instead of stopping it by name.
 
 ## Website blocking
 
@@ -374,6 +404,7 @@ edit it through the GUI, but the format is simple enough to hand-edit:
 | `schedule.days` | `0`=Monday … `6`=Sunday |
 | `schedule.start` / `end` | `HH:MM`, 24h. A window that crosses midnight (e.g. `22:00` → `06:00` for a "Bedtime" profile) works correctly |
 | `manual_duration_minutes` | How long a *manual* ("start now") activation of that profile lasts; doesn't affect the scheduled window |
+| `commitment_seconds` | 0 (default) = Stop/Pause work normally. >0 = see [Commitment mode](#commitment-mode) |
 
 If the file is malformed, the daemon logs an error and keeps running with
 whatever config it last loaded successfully — it will **never** overwrite

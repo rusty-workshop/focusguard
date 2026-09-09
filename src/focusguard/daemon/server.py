@@ -26,7 +26,7 @@ from . import scheduler
 from .enforcer import Enforcer
 from .hosts_apply import apply_domain_block
 from .notifier import notify
-from .state import ManualBlock, RuntimeState
+from .state import ManualBlock, PendingConfirm, RuntimeState
 
 log = logging.getLogger(__name__)
 
@@ -253,6 +253,50 @@ class Daemon:
             "profiles": profiles,
         }
 
+    # ------------------------------------------------------ commitment mode
+    def _active_profile_names(self, now: float) -> set[str]:
+        status = scheduler.compute_status(self.cfg, self.state, now)
+        return {p.name for p in status.profiles if p.scheduled_active or p.manual_active}
+
+    def _check_commitment(self, key: str, commitment_seconds: float, now: float) -> Optional[dict]:
+        """Gate a Stop/Pause action behind Profile.commitment_seconds, if
+        any of the profiles it would affect have it set. First call starts
+        the clock and refuses; the SAME action has to be sent again after
+        commitment_seconds have elapsed to actually go through -- enforced
+        here, in the daemon, so it can't be dodged by using the CLI instead
+        of the GUI or vice versa. A pending confirmation left untouched
+        expires on its own (see RuntimeState.prune_expired) rather than
+        letting a stale click count as confirmation much later."""
+        if commitment_seconds <= 0:
+            self.state.pending_confirms.pop(key, None)
+            return None
+
+        pending = self.state.pending_confirms.get(key)
+        if pending is None:
+            self.state.pending_confirms[key] = PendingConfirm(
+                started_at=now, expires_at=now + commitment_seconds + 60
+            )
+            self.state.save()
+            return {
+                "ok": False,
+                "confirm_required": True,
+                "wait_seconds": commitment_seconds,
+                "error": f"Sure? Send this again in {int(commitment_seconds)}s to confirm.",
+            }
+
+        elapsed = now - pending.started_at
+        if elapsed < commitment_seconds:
+            return {
+                "ok": False,
+                "confirm_required": True,
+                "wait_seconds": commitment_seconds - elapsed,
+                "error": f"Still waiting -- confirm again in {int(commitment_seconds - elapsed)}s.",
+            }
+
+        del self.state.pending_confirms[key]
+        self.state.save()
+        return None
+
     def _cmd_start(self, request: dict) -> dict:
         name = request.get("profile")
         if not isinstance(name, str) or name not in self.cfg.profiles:
@@ -274,6 +318,20 @@ class Daemon:
     def _cmd_stop(self, request: dict) -> dict:
         name = request.get("profile")  # optional: stop just one profile
         now = time.time()
+
+        if name is not None and name not in self.cfg.profiles:
+            return {"ok": False, "error": f"unknown profile {name!r}"}
+        if name is not None:
+            commitment = self.cfg.profiles[name].commitment_seconds
+            key = f"stop:{name}"
+        else:
+            active = self._active_profile_names(now)
+            commitment = max((self.cfg.profiles[n].commitment_seconds for n in active), default=0)
+            key = "stop:__all__"
+        gate = self._check_commitment(key, commitment, now)
+        if gate is not None:
+            return gate
+
         dt = datetime.fromtimestamp(now)
         stopped = []
         for pname, profile in self.cfg.profiles.items():
@@ -297,6 +355,14 @@ class Daemon:
         minutes = request.get("minutes")
         if not isinstance(minutes, (int, float)) or not (0 < minutes <= 24 * 60):
             return {"ok": False, "error": "minutes must be a number between 0 and 1440"}
+
+        now = time.time()
+        active = self._active_profile_names(now)
+        commitment = max((self.cfg.profiles[n].commitment_seconds for n in active), default=0)
+        gate = self._check_commitment("pause", commitment, now)
+        if gate is not None:
+            return gate
+
         self.state.paused_until = time.time() + minutes * 60
         self.state.save()
         if self.cfg.settings.notifications_enabled:

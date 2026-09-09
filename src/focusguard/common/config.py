@@ -59,6 +59,11 @@ class Profile:
     blocked_domains: List[str] = field(default_factory=list)
     schedule: Schedule = field(default_factory=Schedule)
     manual_duration_minutes: int = 45
+    #: Seconds a Stop/Pause request against this profile must be repeated
+    #: after, to actually take effect -- 0 disables the friction entirely
+    #: (default, unchanged behavior). Enforced by the daemon, not the GUI,
+    #: so it can't be bypassed from the CLI either.
+    commitment_seconds: int = 0
 
     def validate(self) -> None:
         if not self.name or not isinstance(self.name, str):
@@ -84,6 +89,8 @@ class Profile:
             raise ConfigError(
                 f"profile {self.name!r}: manual_duration_minutes must be 1-1440"
             )
+        if not isinstance(self.commitment_seconds, int) or not (0 <= self.commitment_seconds <= 3600):
+            raise ConfigError(f"profile {self.name!r}: commitment_seconds must be 0-3600")
         self.schedule.validate(f"profile {self.name!r}")
 
 
@@ -123,6 +130,7 @@ class Config:
                     "blocked_domains": list(p.blocked_domains),
                     "schedule": asdict(p.schedule),
                     "manual_duration_minutes": p.manual_duration_minutes,
+                    "commitment_seconds": p.commitment_seconds,
                 }
                 for name, p in self.profiles.items()
             },
@@ -151,6 +159,7 @@ class Config:
                     blocked_domains=raw.get("blocked_domains", []),
                     schedule=schedule,
                     manual_duration_minutes=raw.get("manual_duration_minutes", 45),
+                    commitment_seconds=raw.get("commitment_seconds", 0),
                 )
             except TypeError as exc:
                 raise ConfigError(f"profile {name!r} has invalid fields: {exc}") from exc

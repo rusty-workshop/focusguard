@@ -118,6 +118,16 @@ class ProfileEditorWindow(Adw.Window):
         manual_group.add(self._duration_row)
         page.add(manual_group)
 
+        commitment_group = Adw.PreferencesGroup(
+            title="Commitment mode",
+            description="Stop/Pause require confirming again after a delay -- makes bailing early take real intent, not just a click. 0 = off",
+        )
+        self._commitment_row = Adw.SpinRow.new_with_range(0, 3600, 5)
+        self._commitment_row.set_title("Confirmation delay (seconds)")
+        self._commitment_row.set_value(profile.commitment_seconds if profile else 0)
+        commitment_group.add(self._commitment_row)
+        page.add(commitment_group)
+
         if profile and on_delete:
             danger_group = Adw.PreferencesGroup()
             delete_btn = Gtk.Button(label="Delete profile")
@@ -225,6 +235,7 @@ class ProfileEditorWindow(Adw.Window):
             blocked_domains=list(self._blocked_domains),
             schedule=schedule,
             manual_duration_minutes=int(self._duration_row.get_value()),
+            commitment_seconds=int(self._commitment_row.get_value()),
         )
         self.close()
         self._on_save(profile)

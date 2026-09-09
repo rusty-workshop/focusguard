@@ -95,6 +95,27 @@ def test_config_without_blocked_domains_key_defaults_to_empty():
     assert cfg.profiles["Old"].blocked_domains == []
 
 
+def test_commitment_seconds_round_trip(tmp_path):
+    path = tmp_path / "config.json"
+    cfg = Config()
+    cfg.profiles["Study"] = Profile(name="Study", commitment_seconds=120)
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.profiles["Study"].commitment_seconds == 120
+
+
+def test_commitment_seconds_defaults_to_zero_for_old_configs():
+    cfg = Config.from_dict({"profiles": {"Old": {"name": "Old"}}})
+    assert cfg.profiles["Old"].commitment_seconds == 0
+
+
+def test_commitment_seconds_out_of_range_rejected():
+    with pytest.raises(ConfigError):
+        Config.from_dict({"profiles": {"Bad": {"name": "Bad", "commitment_seconds": 999999}}})
+    with pytest.raises(ConfigError):
+        Config.from_dict({"profiles": {"Bad": {"name": "Bad", "commitment_seconds": -1}}})
+
+
 def test_profile_key_name_mismatch_rejected():
     with pytest.raises(ConfigError):
         Config.from_dict({"profiles": {"KeyA": {"name": "OtherName"}}})

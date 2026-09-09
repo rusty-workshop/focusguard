@@ -35,6 +35,26 @@ class ManualBlock:
 
 
 @dataclass
+class PendingConfirm:
+    """A Stop/Pause request against a `commitment_seconds`-protected profile,
+    waiting to be repeated. Tracked with an absolute expiry (rather than
+    just a start time + the profile's commitment_seconds) so RuntimeState
+    can prune stale ones on its own without needing to look the profile back
+    up in config -- if it's never confirmed, it just quietly disappears
+    rather than letting a months-old click count as "confirmed" the next
+    time someone happens to ask."""
+    started_at: float
+    expires_at: float
+
+    def to_dict(self) -> dict:
+        return {"started_at": self.started_at, "expires_at": self.expires_at}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PendingConfirm":
+        return cls(started_at=d["started_at"], expires_at=d["expires_at"])
+
+
+@dataclass
 class RuntimeState:
     manual_blocks: List[ManualBlock] = field(default_factory=list)
     paused_until: Optional[float] = None
@@ -43,21 +63,30 @@ class RuntimeState:
     #: on its own once the window would have ended anyway, so the next
     #: scheduled occurrence (tomorrow, etc.) is unaffected.
     schedule_suppressed: Dict[str, float] = field(default_factory=dict)
+    #: "stop:<profile>" / "stop:__all__" / "pause" -> the pending commitment
+    #: window for that action, per Profile.commitment_seconds. See
+    #: Daemon._check_commitment in daemon/server.py.
+    pending_confirms: Dict[str, PendingConfirm] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
             "manual_blocks": [m.to_dict() for m in self.manual_blocks],
             "paused_until": self.paused_until,
             "schedule_suppressed": self.schedule_suppressed,
+            "pending_confirms": {k: v.to_dict() for k, v in self.pending_confirms.items()},
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "RuntimeState":
         blocks = [ManualBlock.from_dict(m) for m in d.get("manual_blocks", [])]
+        pending = {
+            k: PendingConfirm.from_dict(v) for k, v in d.get("pending_confirms", {}).items()
+        }
         return cls(
             manual_blocks=blocks,
             paused_until=d.get("paused_until"),
             schedule_suppressed=dict(d.get("schedule_suppressed", {})),
+            pending_confirms=pending,
         )
 
     def prune_expired(self, now: float) -> None:
@@ -66,6 +95,9 @@ class RuntimeState:
             self.paused_until = None
         self.schedule_suppressed = {
             name: until for name, until in self.schedule_suppressed.items() if now < until
+        }
+        self.pending_confirms = {
+            key: p for key, p in self.pending_confirms.items() if now < p.expires_at
         }
 
     def save(self, path=None) -> None:
