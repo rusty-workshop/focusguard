@@ -12,6 +12,7 @@ from gi.repository import Gtk, Adw  # noqa: E402
 
 from ..common.config import Profile, Schedule
 from ..common.appinfo import lookup_app
+from ..common.blocklists import STARTER_BLOCKLISTS
 from ..common.domains import InvalidDomainError, normalize_domain
 from .picker import AppPickerWindow
 
@@ -74,6 +75,13 @@ class ProfileEditorWindow(Adw.Window):
         add_site_btn.add_css_class("flat")
         add_site_btn.connect("clicked", self._on_add_domain)
         self._add_site_row.add_suffix(add_site_btn)
+        starter_btn = Gtk.MenuButton(
+            icon_name="view-list-symbolic", valign=Gtk.Align.CENTER,
+            tooltip_text="Add a starter list of common distracting sites",
+        )
+        starter_btn.add_css_class("flat")
+        starter_btn.set_popover(self._build_starter_popover())
+        self._add_site_row.add_suffix(starter_btn)
         sites_group.add(self._add_site_row)
 
         self._sites_list_group = Adw.PreferencesGroup()
@@ -169,6 +177,40 @@ class ProfileEditorWindow(Adw.Window):
                 names.append(entry.name if entry else app_id)
             more = f" +{n - 3} more" if n > 3 else ""
             self._apps_row.set_subtitle(", ".join(names) + more)
+
+    def _build_starter_popover(self) -> Gtk.Popover:
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8,
+                       margin_bottom=8, margin_start=8, margin_end=8)
+        header = Gtk.Label(label="Add a starter list", xalign=0)
+        header.add_css_class("heading")
+        box.append(header)
+
+        checks: list[tuple[Gtk.CheckButton, str]] = []
+        for category in STARTER_BLOCKLISTS:
+            check = Gtk.CheckButton(label=category)
+            box.append(check)
+            checks.append((check, category))
+
+        popover = Gtk.Popover()
+        add_btn = Gtk.Button(label="Add selected", margin_top=4)
+        add_btn.add_css_class("suggested-action")
+
+        def on_add(*_args) -> None:
+            for check, category in checks:
+                if not check.get_active():
+                    continue
+                for domain in STARTER_BLOCKLISTS[category]:
+                    if domain not in self._blocked_domains:
+                        self._blocked_domains.append(domain)
+                check.set_active(False)
+            self._blocked_domains.sort()
+            self._rebuild_domain_rows()
+            popover.popdown()
+
+        add_btn.connect("clicked", on_add)
+        box.append(add_btn)
+        popover.set_child(box)
+        return popover
 
     def _rebuild_domain_rows(self) -> None:
         for row in list(self._domain_rows.values()):

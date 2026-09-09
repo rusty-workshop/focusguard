@@ -138,6 +138,36 @@ def test_doctor_json_output(capsys):
     assert payload["checks"][0]["name"] == "config.json parses"
 
 
+def test_stats_human_output_shows_durations(capsys):
+    with patch.object(
+        cli, "send_request",
+        return_value={"ok": True, "today": {"School": 90}, "this_week": {"School": 3600}, "all_time": {"School": 7200}},
+    ):
+        code = _main(["stats"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "Today: 1m" in out
+    assert "This week: 1h00m" in out
+    assert "School" in out
+
+
+def test_stats_json_output(capsys):
+    with patch.object(
+        cli, "send_request",
+        return_value={"ok": True, "today": {}, "this_week": {}, "all_time": {}},
+    ):
+        code = _main(["stats", "--json"])
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["today"] == {}
+
+
+def test_format_duration_thresholds():
+    assert cli._format_duration(45) == "45s"
+    assert cli._format_duration(90) == "1m"
+    assert cli._format_duration(3661) == "1h01m"
+
+
 def test_doctor_json_flag_after_subcommand_works():
     parser = cli.build_parser()
     args = parser.parse_args(["doctor", "--json"])

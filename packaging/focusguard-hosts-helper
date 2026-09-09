@@ -40,6 +40,7 @@ _DOMAIN_RE = re.compile(
 _MARK_BEGIN = "# FocusGuard managed block -- BEGIN (do not edit by hand)"
 _MARK_END = "# FocusGuard managed block -- END"
 _REDIRECT_TARGET = "0.0.0.0"
+_COMMON_SUBDOMAIN_PREFIXES = ["www", "m", "mobile", "old", "new", "i", "out", "amp", "lite"]
 
 
 class InvalidDomainError(ValueError):
@@ -52,9 +53,9 @@ def _validate_domain(value: str) -> None:
 
 
 def _hosts_names_for(domain: str) -> list[str]:
-    if domain.startswith("www."):
+    if any(domain == p or domain.startswith(f"{p}.") for p in _COMMON_SUBDOMAIN_PREFIXES):
         return [domain]
-    return [domain, f"www.{domain}"]
+    return [domain] + [f"{p}.{domain}" for p in _COMMON_SUBDOMAIN_PREFIXES]
 
 
 def _render_managed_block(domains) -> str:

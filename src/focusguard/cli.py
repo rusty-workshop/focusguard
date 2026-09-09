@@ -9,6 +9,7 @@ to a Hyprland keybind or used from scripts.
     focusguardctl toggle <profile>
     focusguardctl reload
     focusguardctl doctor
+    focusguardctl stats
     focusguardctl vigi
 
 Add --json *after* any command for machine-readable output (exit code is 0
@@ -159,6 +160,34 @@ def _cmd_doctor(as_json: bool) -> int:
     return 0 if required_ok else 1
 
 
+# ------------------------------------------------------------------- stats
+def _format_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    hours, rem = divmod(seconds, 3600)
+    minutes = rem // 60
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    return f"{minutes}m"
+
+
+def _print_stats(data: dict, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(data))
+        return
+
+    def _line(label: str, totals: dict) -> None:
+        total = sum(totals.values())
+        print(f"{label}: {_format_duration(total)}" if total else f"{label}: 0s")
+        for name, seconds in sorted(totals.items(), key=lambda kv: -kv[1]):
+            print(f"  {name:<20} {_format_duration(seconds)}")
+
+    _line("Today", data.get("today", {}))
+    _line("This week", data.get("this_week", {}))
+    _line("All time (last 90 days)", data.get("all_time", {}))
+
+
 # ------------------------------------------------------------------- vigi
 def _vigi_art_lines(eyes_open: bool) -> list[str]:
     eyes = "o   o" if eyes_open else "-   -"
@@ -237,6 +266,8 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.command in ("status", "start", "stop", "pause", "resume", "toggle"):
         _print_status(response, args.json)
+    elif args.command == "stats":
+        _print_stats(response, args.json)
     elif args.json:
         print(json.dumps(response))
     return 0
@@ -277,6 +308,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser(
         "doctor", help="check daemon/socket/systemd/config health", parents=[json_parent]
+    )
+
+    sub.add_parser(
+        "stats", help="how much time each profile has actually spent blocking", parents=[json_parent]
     )
 
     sub.add_parser("vigi", help="say hi to Vigi")

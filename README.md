@@ -120,6 +120,12 @@ bank and [`docs/vigi.svg`](docs/vigi.svg) for the animated source art.
   clicking (or running the command) again after a delay you set, so
   bailing out early takes real intent instead of one reflexive click. See
   [Commitment mode](#commitment-mode)
+- 📊 **Focus stats** — the daemon quietly tracks how much time each
+  profile has actually spent blocking (today / this week / all-time),
+  shown in the GUI and via `focusguardctl stats`
+- 🧺 **Starter website lists** — one click in the profile editor adds a
+  curated set of common distracting sites (social media, video/streaming,
+  shopping, news) instead of typing domains one at a time
 - 🔔 **Desktop notifications** on block start/end (optional, degrades
   gracefully without `libnotify`)
 - ⌨️ **Hyprland keybind ready** via a scriptable CLI — you choose the key,
@@ -254,9 +260,16 @@ at the OS's own hostname resolution:
 3. That script re-validates every domain against a strict allow-pattern
    (rejecting anything that isn't a plausible hostname) and rewrites *only*
    the block of `/etc/hosts` between two `# FocusGuard managed block`
-   markers, redirecting the domain and its `www.` variant to `0.0.0.0`
-   (instant connection refused, not a hang). Everything else in the file —
-   your own entries, other tools' entries — is left alone.
+   markers, redirecting the domain plus a curated list of common subdomain
+   prefixes (`www.`, `m.`, `mobile.`, `old.`, `new.`, `i.`, `out.`, `amp.`,
+   `lite.`) to `0.0.0.0` (instant connection refused, not a hang) —
+   catching things like `m.facebook.com` or `old.reddit.com` without you
+   having to list every variant. This is a heuristic, not true wildcard
+   matching: `/etc/hosts` has no concept of `*.domain.com`, and getting
+   that would mean taking over system DNS resolution, which isn't worth it
+   on a machine where something else (Tailscale's MagicDNS, systemd-
+   resolved, whatever) already owns that job. Everything else in the file
+   — your own entries, other tools' entries — is left alone.
 
 Because this happens at the hosts-file level, it blocks the domain for
 **every browser and every app on the system** the moment it resolves the
@@ -421,6 +434,7 @@ focusguardctl resume              # cancel an active pause immediately
 focusguardctl toggle <profile>    # start if inactive, stop if active — ideal for a keybind
 focusguardctl reload              # force-reload config.json from disk
 focusguardctl doctor              # check daemon/socket/systemd/config health, exits 1 if anything's wrong
+focusguardctl stats                # how much time each profile has actually spent blocking (today/week/all-time)
 focusguardctl vigi                # say hi to Vigi (a little blink+bob animation in an interactive terminal)
 ```
 

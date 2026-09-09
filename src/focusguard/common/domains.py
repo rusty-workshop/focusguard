@@ -47,10 +47,21 @@ def validate_domain(value: str) -> None:
         raise InvalidDomainError(f"{value!r} is not a valid domain")
 
 
+#: Best-effort, not exhaustive: /etc/hosts has no concept of a wildcard
+#: (there's no way to say "*.reddit.com" in it), so true subdomain coverage
+#: would mean taking over DNS resolution system-wide -- not worth doing on
+#: a machine where Tailscale's MagicDNS already owns that. This is instead
+#: a curated list of the subdomain prefixes sites actually use in practice
+#: (old.reddit.com, m.facebook.com, mobile.twitter.com, ...), applied to
+#: every blocked domain that doesn't already start with one of them.
+_COMMON_SUBDOMAIN_PREFIXES = ["www", "m", "mobile", "old", "new", "i", "out", "amp", "lite"]
+
+
 def hosts_names_for(domain: str) -> list[str]:
     """The hostnames to actually redirect for a blocked ``domain``: the bare
-    domain plus its ``www.`` variant, so blocking ``x.com`` also catches the
-    extremely common ``www.x.com`` without the user having to list both."""
-    if domain.startswith("www."):
+    domain plus a handful of common subdomain prefixes (``www.``, ``m.``,
+    ``old.``, ...), so blocking ``x.com`` also catches the likes of
+    ``m.x.com`` without the user having to list every variant by hand."""
+    if any(domain == p or domain.startswith(f"{p}.") for p in _COMMON_SUBDOMAIN_PREFIXES):
         return [domain]
-    return [domain, f"www.{domain}"]
+    return [domain] + [f"{p}.{domain}" for p in _COMMON_SUBDOMAIN_PREFIXES]

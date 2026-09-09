@@ -37,9 +37,18 @@ def test_validate_domain_rejects_url():
         validate_domain("https://reddit.com")
 
 
-def test_hosts_names_adds_www_variant():
-    assert hosts_names_for("reddit.com") == ["reddit.com", "www.reddit.com"]
+def test_hosts_names_adds_common_subdomain_prefixes():
+    names = hosts_names_for("reddit.com")
+    assert names[0] == "reddit.com"  # bare domain always first
+    for expected in ("www.reddit.com", "m.reddit.com", "old.reddit.com", "mobile.reddit.com"):
+        assert expected in names
 
 
-def test_hosts_names_does_not_double_www():
+def test_hosts_names_does_not_double_prefix_already_present():
     assert hosts_names_for("www.reddit.com") == ["www.reddit.com"]
+    assert hosts_names_for("old.reddit.com") == ["old.reddit.com"]
+
+
+def test_hosts_names_has_no_duplicates():
+    names = hosts_names_for("reddit.com")
+    assert len(names) == len(set(names))

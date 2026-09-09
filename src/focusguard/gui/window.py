@@ -81,6 +81,15 @@ _VIGI_CSS = (
 _vigi_css_installed = False
 
 
+def _format_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    hours, rem = divmod(seconds, 3600)
+    minutes = rem // 60
+    return f"{hours}h{minutes:02d}m" if hours else f"{minutes}m"
+
+
 def _ensure_vigi_css() -> None:
     global _vigi_css_installed
     if _vigi_css_installed:
@@ -209,6 +218,11 @@ class MainWindow(Adw.ApplicationWindow):
         action_row.append(self._resume_btn)
         inner.append(action_row)
 
+        self._stats_label = Gtk.Label(label="", xalign=0, margin_top=4)
+        self._stats_label.add_css_class("dim-label")
+        self._stats_label.add_css_class("caption")
+        inner.append(self._stats_label)
+
         status_box.append(inner)
         root.append(status_box)
 
@@ -232,6 +246,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._pause_gate_until = 0.0
         self._stop_gate_until = 0.0
         self.refresh_status()
+        self.refresh_stats()
         GLib.timeout_add(STATUS_POLL_INTERVAL_MS, self._on_poll_tick)
         self._rebuild_profile_rows()
 
@@ -320,10 +335,28 @@ class MainWindow(Adw.ApplicationWindow):
     # -------------------------------------------------------------- status
     def _on_poll_tick(self) -> bool:
         self.refresh_status()
+        self.refresh_stats()
         return True  # keep the GLib timeout running
 
     def refresh_status(self) -> None:
         client.call_async({"cmd": "status"}, self._apply_status)
+
+    def refresh_stats(self) -> None:
+        client.call_async({"cmd": "stats"}, self._apply_stats)
+
+    def _apply_stats(self, response: dict | None, error: str | None) -> bool:
+        if error or response is None or not response.get("ok", True):
+            return False
+        today_total = sum(response.get("today", {}).values())
+        week_total = sum(response.get("this_week", {}).values())
+        if today_total <= 0 and week_total <= 0:
+            self._stats_label.set_text("")
+        else:
+            self._stats_label.set_text(
+                f"Blocked {_format_duration(today_total)} today · "
+                f"{_format_duration(week_total)} this week"
+            )
+        return False  # one-shot idle callback
 
     def _apply_status(self, response: dict | None, error: str | None) -> bool:
         if error or response is None:

@@ -16,7 +16,7 @@ import os
 import socket
 import struct
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from ..common import mascot, paths
@@ -27,6 +27,7 @@ from .enforcer import Enforcer
 from .hosts_apply import apply_domain_block
 from .notifier import notify
 from .state import ManualBlock, PendingConfirm, RuntimeState
+from .stats import Stats
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,9 @@ class Daemon:
         self._hosts_block_ok = True  # last apply_domain_block() result, for once-only failure notices
         self._server: Optional[asyncio.base_events.Server] = None
         self._last_nudge: dict[str, float] = {}
+        self._stats = Stats.load()
+        self._last_stats_flush = 0.0
+        self._last_tick_at: Optional[float] = None
 
     # ---------------------------------------------------------------- config
     def _load_config_safely(self) -> Config:
@@ -108,6 +112,7 @@ class Daemon:
             # Startup re-applies whatever should be active, so a quick
             # restart just means a brief window where sites are reachable.
             self._apply_website_block([])
+            self._stats.save(today=date.today())
 
     async def _tick(self) -> None:
         self._maybe_reload_config()
@@ -128,6 +133,25 @@ class Daemon:
         events = self.enforcer.tick(status.blocked_desktop_ids)
         self._handle_enforcement_events(events, now)
         self._apply_website_block(status.blocked_domains)
+        self._accumulate_stats(status, now)
+
+    def _accumulate_stats(self, status, now: float) -> None:
+        """Credits whatever profiles were actually active this tick with
+        the real elapsed time since the last one (not just the configured
+        poll interval, since a slow tick or a missed sleep would otherwise
+        silently under/over-count). Flushed to disk periodically rather
+        than every tick -- see stats.py for why."""
+        if self._last_tick_at is not None and not status.paused:
+            elapsed = now - self._last_tick_at
+            active = {p.name for p in status.profiles if p.scheduled_active or p.manual_active}
+            if active and 0 < elapsed < 300:  # ignore absurd gaps (suspend/resume, clock jumps)
+                today = date.fromtimestamp(now).isoformat()
+                self._stats.add_seconds(active, elapsed, today)
+        self._last_tick_at = now
+
+        if now - self._last_stats_flush > 30:
+            self._stats.save(today=date.fromtimestamp(now))
+            self._last_stats_flush = now
 
     def _enforce_now(self) -> None:
         """Run an immediate out-of-band enforcement pass (used right after a
@@ -391,6 +415,15 @@ class Daemon:
         self._enforce_now()
         return {"ok": True}
 
+    def _cmd_stats(self, request: dict) -> dict:
+        today = date.today()
+        return {
+            "ok": True,
+            "today": self._stats.today_totals(today),
+            "this_week": self._stats.week_totals(today),
+            "all_time": self._stats.all_time_totals(today),
+        }
+
     _COMMANDS = {
         "status": _cmd_status,
         "start": _cmd_start,
@@ -399,4 +432,5 @@ class Daemon:
         "resume": _cmd_resume,
         "toggle": _cmd_toggle,
         "reload": _cmd_reload,
+        "stats": _cmd_stats,
     }
