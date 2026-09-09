@@ -104,7 +104,7 @@ def _ensure_vigi_css() -> None:
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
-        super().__init__(application=app, default_width=460, default_height=640, title="FocusGuard")
+        super().__init__(application=app, default_width=500, default_height=640, title="FocusGuard")
 
         _ensure_vigi_css()
         self._cfg: Config = self._load_config()
