@@ -497,7 +497,11 @@ detail.
 
 ## Security notes
 
-- Runs entirely as your own user — no root, no setuid, no polkit rules.
+- App blocking runs entirely as your own user — no root, no setuid, no
+  polkit rules. Website blocking is the one exception (see below); the
+  daemon's systemd unit therefore does **not** set `NoNewPrivileges`, since
+  that would categorically block the `sudo` call website blocking relies
+  on, regardless of how narrowly the sudoers rule is scoped.
 - The control socket lives under `$XDG_RUNTIME_DIR/focusguard/` (`0700`
   directory, `0600` socket) and every connection's peer UID is checked
   before any command is parsed.

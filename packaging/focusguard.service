@@ -11,12 +11,14 @@ Type=simple
 ExecStart=focusguardd
 Restart=on-failure
 RestartSec=2
-# Defense-in-depth beyond the daemon's own UID/protected-process checks.
-# (ProtectHome/ReadWritePaths sandboxing was tried but systemd requires
-# those paths to pre-exist before the unit ever runs, which is awkward for
-# a first-run config dir the daemon creates itself -- NoNewPrivileges alone
-# still meaningfully limits what the process could do if compromised.)
-NoNewPrivileges=yes
+# NoNewPrivileges=yes was set here as defense-in-depth before website
+# blocking existed. It can't be kept: it blocks *any* privilege escalation
+# via execve (sudo, setuid, pkexec -- doesn't matter which), and website
+# blocking's entire design is the daemon calling `sudo -n` to run one
+# narrowly-scoped, self-validating helper (see packaging/focusguard-hosts-
+# helper and the "Website blocking" section of the README). The sudoers
+# drop-in is the security boundary now: it grants NOPASSWD for exactly one
+# script at one path, nothing else, to `wheel` members only.
 
 [Install]
 WantedBy=default.target
