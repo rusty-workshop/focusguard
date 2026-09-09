@@ -270,6 +270,14 @@ def _run(args: argparse.Namespace) -> int:
         _print_stats(response, args.json)
     elif args.json:
         print(json.dumps(response))
+
+    locked = response.get("locked_profiles")
+    if locked and not args.json:
+        print(
+            f"note: {', '.join(locked)} is protected while active -- "
+            "held back until it stops (see Commitment mode)",
+            file=sys.stderr,
+        )
     return 0
 
 

@@ -21,8 +21,9 @@ from typing import Optional
 
 from ..common import mascot, paths
 from ..common.appinfo import lookup_app
-from ..common.config import Config, ConfigError, load_config
+from ..common.config import Config, ConfigError, load_config, save_config
 from . import scheduler
+from .config_lock import apply_commitment_lock
 from .enforcer import Enforcer
 from .hosts_apply import apply_domain_block
 from .notifier import notify
@@ -79,8 +80,37 @@ class Daemon:
             return
         if mtime != self._cfg_mtime:
             log.info("config file changed on disk, reloading")
-            self.cfg = self._load_config_safely()
-            self.enforcer.grace_period_seconds = self.cfg.settings.grace_period_seconds
+            self._load_and_lock_config()
+
+    def _load_and_lock_config(self) -> list[str]:
+        """Reload config.json, then re-freeze any currently-active,
+        commitment-protected profile back to its prior definition -- see
+        config_lock.py. Used by both the explicit `reload` command and the
+        automatic on-disk-change reload, so a hand-edited config.json can't
+        bypass commitment mode any more than the CLI/GUI can."""
+        new_cfg = self._load_config_safely()
+        locked_cfg, locked = apply_commitment_lock(self.cfg, new_cfg, self.state)
+        self.cfg = locked_cfg
+        self.enforcer.grace_period_seconds = self.cfg.settings.grace_period_seconds
+        if locked:
+            log.warning("held back edits to protected+active profile(s): %s", ", ".join(locked))
+            if self.cfg.settings.notifications_enabled:
+                notify(
+                    "FocusGuard: edit held back",
+                    f"{', '.join(locked)} is protected while active — changes apply once it stops.",
+                )
+            # Without this, config.json on disk still holds the weakened
+            # values -- a `systemctl --user restart` (no root needed,
+            # unlike anything else this app protects against) would then
+            # load them fresh with no prior in-memory config to compare
+            # against, bypassing the lock entirely. Writing the corrected
+            # config back closes that window too.
+            try:
+                save_config(self.cfg, self.cfg_path)
+                self._cfg_mtime = self.cfg_path.stat().st_mtime
+            except (ConfigError, OSError) as exc:
+                log.error("could not persist the reverted config back to disk: %s", exc)
+        return locked
 
     # ------------------------------------------------------------- lifecycle
     async def run(self) -> None:
@@ -410,10 +440,9 @@ class Daemon:
         return self._cmd_start({"profile": name})
 
     def _cmd_reload(self, request: dict) -> dict:
-        self.cfg = self._load_config_safely()
-        self.enforcer.grace_period_seconds = self.cfg.settings.grace_period_seconds
+        locked = self._load_and_lock_config()
         self._enforce_now()
-        return {"ok": True}
+        return {"ok": True, "locked_profiles": locked}
 
     def _cmd_stats(self, request: dict) -> dict:
         today = date.today()

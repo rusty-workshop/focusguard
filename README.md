@@ -242,6 +242,21 @@ or Pause) uses the strictest `commitment_seconds` among whatever profiles
 are currently active, so a protected profile can't be dodged by pausing
 globally instead of stopping it by name.
 
+**The config itself is protected too, not just the Stop/Pause commands.**
+While a commitment-protected profile is actively blocking, the daemon
+refuses to let it be weakened — deleted, its domains/apps trimmed, its
+`commitment_seconds` zeroed out — whether that edit comes from the GUI,
+`focusguardctl`, or hand-editing `config.json` directly. It's held back
+(and the corrected config written back to disk) until the profile is no
+longer active; every other profile and setting still saves normally. This
+closes the obvious loophole of just editing the file to escape a profile
+you asked to be protected from your own future clicks. It does **not**,
+and can't reasonably, survive `systemctl --user restart focusguard` right
+after such an edit — but that's no new hole: `systemctl --user stop`
+alone already bypasses all enforcement instantly, edit or no edit, and
+always has. Commitment mode raises the cost of a reflexive click; it was
+never meant to withstand a user willing to fight their own systemd units.
+
 ## Website blocking
 
 Blocked apps and blocked websites are both per-profile, and both enforced

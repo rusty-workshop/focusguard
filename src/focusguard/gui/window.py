@@ -306,7 +306,17 @@ class MainWindow(Adw.ApplicationWindow):
         except ConfigError as exc:
             self._show_error(f"Could not save configuration: {exc}")
             return
-        client.call_async({"cmd": "reload"}, lambda resp, err: None)
+        client.call_async({"cmd": "reload"}, self._on_reload_response)
+
+    def _on_reload_response(self, response, error) -> None:
+        # A currently-active, commitment-protected profile can't have its
+        # edits applied early -- the daemon holds them back and tells us
+        # which profile(s), so surface that rather than silently pretending
+        # the save "worked" while enforcement quietly keeps the old values.
+        locked = (response or {}).get("locked_profiles")
+        if locked:
+            names = ", ".join(locked)
+            self._show_toast(f"{names} is protected while active — changes apply once it stops.")
 
     def _show_error(self, message: str) -> None:
         dialog = Adw.MessageDialog(

@@ -64,6 +64,20 @@ def test_stop_without_profile_sends_no_profile_key():
     assert mock_send.call_args[0][0] == {"cmd": "stop"}
 
 
+def test_reload_prints_note_when_a_profile_was_held_back(capsys):
+    with patch.object(cli, "send_request", return_value={"ok": True, "locked_profiles": ["School"]}):
+        code = _main(["reload"])
+    assert code == 0
+    assert "School" in capsys.readouterr().err
+
+
+def test_reload_prints_nothing_extra_when_no_profile_locked(capsys):
+    with patch.object(cli, "send_request", return_value={"ok": True, "locked_profiles": []}):
+        code = _main(["reload"])
+    assert code == 0
+    assert capsys.readouterr().err == ""
+
+
 def test_json_flag_must_come_after_subcommand():
     with pytest.raises(SystemExit) as exc_info:
         cli.build_parser().parse_args(["--json", "status"])
