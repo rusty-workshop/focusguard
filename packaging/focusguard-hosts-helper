@@ -20,13 +20,81 @@ point this at a throwaway file instead of the real system hosts file.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 
-# Installed alongside the focusguard package (see PKGBUILD), so this import
-# works when run as root without needing a venv.
-from focusguard.common.domains import InvalidDomainError, validate_domain
-from focusguard.daemon.hosts import merge_into_hosts
+# Deliberately self-contained (stdlib only, nothing imported from the
+# `focusguard` package) rather than reusing focusguard.common.domains /
+# focusguard.daemon.hosts. This runs as root via sudo, and root's plain
+# `python3` has no reason to be able to import a package that may only be
+# installed into one user's --user site-packages or a dev venv -- making a
+# root-run script depend on that would be fragile regardless of install
+# method. The logic below is intentionally the same as (and tested against
+# the same behavior as) daemon/hosts.py and common/domains.py; see
+# tests/test_hosts_helper.py.
+
+_DOMAIN_RE = re.compile(
+    r"^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$"
+)
+_MARK_BEGIN = "# FocusGuard managed block -- BEGIN (do not edit by hand)"
+_MARK_END = "# FocusGuard managed block -- END"
+_REDIRECT_TARGET = "0.0.0.0"
+
+
+class InvalidDomainError(ValueError):
+    pass
+
+
+def _validate_domain(value: str) -> None:
+    if not _DOMAIN_RE.match(value):
+        raise InvalidDomainError(f"{value!r} is not a valid domain")
+
+
+def _hosts_names_for(domain: str) -> list[str]:
+    if domain.startswith("www."):
+        return [domain]
+    return [domain, f"www.{domain}"]
+
+
+def _render_managed_block(domains) -> str:
+    domains = sorted(set(domains))
+    if not domains:
+        return ""
+    lines = [_MARK_BEGIN]
+    for domain in domains:
+        _validate_domain(domain)
+        for host in _hosts_names_for(domain):
+            lines.append(f"{_REDIRECT_TARGET} {host}")
+    lines.append(_MARK_END)
+    return "\n".join(lines) + "\n"
+
+
+def _merge_into_hosts(original_text: str, domains) -> str:
+    begin_count = original_text.count(_MARK_BEGIN)
+    end_count = original_text.count(_MARK_END)
+    if begin_count > 1 or end_count > 1 or begin_count != end_count:
+        raise ValueError(
+            "hosts file has an inconsistent FocusGuard block "
+            f"(BEGIN markers={begin_count}, END markers={end_count}) -- "
+            "refusing to touch it; remove the stray marker(s) by hand"
+        )
+
+    new_block = _render_managed_block(domains)
+
+    if begin_count == 0:
+        if not new_block:
+            return original_text
+        sep = "" if original_text.endswith("\n") or not original_text else "\n"
+        return original_text + sep + new_block
+
+    start = original_text.index(_MARK_BEGIN)
+    end = original_text.index(_MARK_END) + len(_MARK_END)
+    tail_start = end + 1 if original_text[end:end + 1] == "\n" else end
+    before, after = original_text[:start], original_text[tail_start:]
+    if not new_block:
+        return before.rstrip("\n") + ("\n" if before.strip() else "") + after
+    return before + new_block + after
 
 
 def main(argv: list[str]) -> int:
@@ -45,7 +113,7 @@ def main(argv: list[str]) -> int:
     domains = [line for line in raw_lines if line]
     try:
         for domain in domains:
-            validate_domain(domain)
+            _validate_domain(domain)
     except InvalidDomainError as exc:
         print(f"error: refusing malformed domain: {exc}", file=sys.stderr)
         return 1
@@ -59,7 +127,7 @@ def main(argv: list[str]) -> int:
         return 1
 
     try:
-        updated = merge_into_hosts(original, domains)
+        updated = _merge_into_hosts(original, domains)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
